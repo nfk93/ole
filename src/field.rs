@@ -31,23 +31,24 @@ impl OleField for Fp {
     }
 }
 
-fn fft3(coeffs: Vec<Fp>, beta: &Fp) -> Vec<Fp> {
+// Slow reference implementation, use fft3_in_place
+pub fn fft3(coeffs: &[Fp], beta: &Fp) -> Vec<Fp> {
     let l = coeffs.len();
     if l == 1 {
-        return coeffs;
+        return coeffs.to_vec();
     }
 
-    let a_coeffs = coeffs.iter().step_by(3).map(|x| *x).collect();
-    let b_coeffs = coeffs.iter().skip(1).step_by(3).map(|x| *x).collect();
-    let c_coeffs = coeffs.iter().skip(2).step_by(3).map(|x| *x).collect();
+    let a_coeffs: Vec<Fp> = coeffs.iter().step_by(3).map(|x| *x).collect();
+    let b_coeffs: Vec<Fp> = coeffs.iter().skip(1).step_by(3).map(|x| *x).collect();
+    let c_coeffs: Vec<Fp> = coeffs.iter().skip(2).step_by(3).map(|x| *x).collect();
 
     let mut beta3 = beta.clone();
     beta3.square();
     beta3.mul_assign(&beta);
 
-    let a_vals = fft3(a_coeffs, &beta3);
-    let b_vals = fft3(b_coeffs, &beta3);
-    let c_vals = fft3(c_coeffs, &beta3);
+    let a_vals = fft3(&a_coeffs, &beta3);
+    let b_vals = fft3(&b_coeffs, &beta3);
+    let c_vals = fft3(&c_coeffs, &beta3);
 
     let mut result = vec![Fp::zero(); l]; // could use unsafe unitialized arrays
     for i in 0..(l/3) {
@@ -70,14 +71,14 @@ fn fft3(coeffs: Vec<Fp>, beta: &Fp) -> Vec<Fp> {
     return result;
 }
 
-fn fft3_inverse(points: Vec<Fp>) -> Vec<Fp> {
+pub fn fft3_inverse(points: &mut [Fp], beta: &Fp) {
     let len_inv = Fp::from_str("152129878020896450676634234608701779969").unwrap();
-    let beta_inv = Fp::beta_gen.inverse().unwrap();
-    let mut fft_result = fft3(points, &beta_inv);
-    fft_result.iter_mut().for_each(|coeff| coeff.mul_assign(&len_inv));
-    return fft_result;
+    let beta_inv = beta.inverse().unwrap();
+    fft3_in_place(points, &beta_inv);
+    points.iter_mut().for_each(|coeff| coeff.mul_assign(&len_inv));
 }
 
+// Slow reference implementation, use fft2_in_place
 pub fn fft2(a_coeffs: &[Fp], alpha: &Fp) -> Vec<Fp> {
     let l = a_coeffs.len();
 
@@ -113,18 +114,16 @@ pub fn fft2(a_coeffs: &[Fp], alpha: &Fp) -> Vec<Fp> {
     return a_values
 }
 
-fn fft2_inverse(points: Vec<Fp>) -> Vec<Fp> {
+pub fn fft2_inverse(points: &mut [Fp], alpha: &Fp) {
     let len_inv = Fp::from_str("151989035529879520407564258403863019135").unwrap();
-    let alpha_inv = Fp::alpha_gen.inverse().unwrap();
-    let mut fft_result = fft2(&points, &alpha_inv);
-    fft_result.iter_mut().for_each(|coeff| coeff.mul_assign(&len_inv));
-    return fft_result;
+    let alpha_inv = alpha.inverse().unwrap();
+    fft2_in_place(points, &alpha_inv);
+    points.iter_mut().for_each(|coeff| coeff.mul_assign(&len_inv));
 }
 
 // only works when coeffs.len() = 2^k for some k, and alpha is a 2^k'th rooth of unity
-pub fn fft2_in_place(coeffs: &[Fp], alpha: &Fp) -> Vec<Fp> {
-    let mut result = coeffs.to_vec();
-    digit_reverse_swap(&mut result, 2);
+pub fn fft2_in_place(coeffs: &mut [Fp], alpha: &Fp) {
+    digit_reverse_swap(coeffs, 2);
     let n = coeffs.len();
     let mut distance = 1usize;
     let mut iter = 0usize;
@@ -133,29 +132,65 @@ pub fn fft2_in_place(coeffs: &[Fp], alpha: &Fp) -> Vec<Fp> {
         let mut factor_multiplier = alpha.pow([(n/distance/2) as u64]);
         for k in 0..distance {
             for j in (0..n).step_by(2*distance) {
-                let mut x = result[j+k].clone();
-                let mut y = result[j+k+distance].clone();
+                let mut x = coeffs[j+k];
+                let mut y = coeffs[j+k+distance];
                 y.mul_assign(&factor);
 
-                result[j+k].add_assign(&y);
+                coeffs[j+k].add_assign(&y);
                 x.sub_assign(&y);
-                result[j+k+distance] = x;
+                coeffs[j+k+distance] = x;
             }
             factor.mul_assign(&factor_multiplier);
         }
         distance <<= 1;
         iter += 1;
     }
-    return result
 }
 
-fn fft3_in_place(coeffs: &mut [Fp], beta: &Fp) {
-    unimplemented!();
+pub fn fft3_in_place(coeffs: &mut [Fp], beta: &Fp) {
+    digit_reverse_swap(coeffs, 3);
+    let n = coeffs.len();
+
+    let mut beta_1 = beta.pow([(n/3) as u64]);
+    let mut beta_2 = beta_1;
+    beta_2.square();
+
+    let mut distance = 1usize;
+    let mut iter = 0usize;
+    while distance < n {
+        let mut factor = Fp::one();
+        let mut factor_multiplier = beta.pow([(n/distance/3) as u64]);
+        for k in 0..distance {
+            let mut factor2 = factor;
+            factor2.square();
+            for j in (0..n).step_by(3*distance) {
+                let mut x = coeffs[j+k];
+                let mut y = coeffs[j+k+distance];
+                let mut z = coeffs[j+k+2*distance];
+                y.mul_assign(&factor);
+                z.mul_assign(&factor2);
+
+                coeffs[j+k].add_assign(&y);
+                coeffs[j+k].add_assign(&z);
+
+                for i in 1..3 {
+                    y.mul_assign(&beta_1);
+                    z.mul_assign(&beta_2);
+                    coeffs[j+k+i*distance] = x;
+                    coeffs[j+k+i*distance].add_assign(&y);
+                    coeffs[j+k+i*distance].add_assign(&z);
+                }
+            }
+            factor.mul_assign(&factor_multiplier);
+        }
+        distance = distance*3;
+        iter += 1;
+    }
 }
 
 // does digit-reversal permutation of the data in the given base
 // precondition: data.len() = base^m
-fn digit_reverse_swap<T: Sized + Copy>(data: &mut[T], base: usize) {
+pub fn digit_reverse_swap<T: Sized + Copy>(data: &mut[T], base: usize) {
     let n = data.len();
     let (n1, p_odd) = calc_n1(base, n);
     let seed = seed_table(base, n, n1);
@@ -183,7 +218,7 @@ fn calc_n1(base: usize, n: usize) -> (usize, bool) {
         t = t*base;
     }
     if t != n {
-        panic!(format!("{} is not on the form {}^{}", n, base, k));
+        panic!(format!("Cant do digit-reversal reordering. Data size {} is not on the form {}^{}", n, base, k));
     }
 
     if k.trailing_zeros() == 0 {
@@ -251,7 +286,7 @@ mod tests {
     }
 
     #[test]
-    fn test_fft_alpha() {
+    fn test_fft2() {
         let mut rng = rand::thread_rng();
         let coeffs: Vec<Fp> = (0..2048).map(|_| Fp::random(&mut rng)).collect();
         let points = fft2(&coeffs, &Fp::alpha_gen);
@@ -264,7 +299,8 @@ mod tests {
     fn test_fft2_in_place() {
         let mut rng = rand::thread_rng();
         let coeffs: Vec<Fp> = (0..1024).map(|_| Fp::random(&mut rng)).collect();
-        let points = fft2_in_place(&coeffs, &Fp::alpha_gen);
+        let mut points = coeffs.to_vec();
+        fft2_in_place(&mut points, &Fp::alpha_gen);
         for i in 0..1024 {
             let actual = points[i];
             let expected = horner(&coeffs, &Fp::alpha_gen.pow(&[i as u64]));
@@ -276,22 +312,39 @@ mod tests {
     }
 
     #[test]
-    fn test_fft_alpha_inverse() {
+    fn test_fft2_inverse() {
         let mut rng = rand::thread_rng();
         let points: Vec<Fp> = (0..1024).map(|_| Fp::random(&mut rng)).collect();
-        let coeffs = fft2_inverse(points.clone());
+        let mut coeffs = points.to_vec();
+        fft2_inverse(&mut coeffs, &Fp::alpha_gen);
         points.iter().enumerate().for_each(|(idx, point)| {
             assert_eq!(*point, horner(&coeffs, &Fp::alpha_gen.pow(&[idx as u64])));
         })
     }
 
     #[test]
-    fn test_fft_beta() {
+    fn test_fft3() {
         let mut rng = rand::thread_rng();
         let coeffs: Vec<Fp> = (0..(Fp::B)).map(|_| Fp::random(&mut rng)).collect();
-        let points = fft3(coeffs.clone(), &Fp::beta_gen);
+        let points = fft3(&coeffs, &Fp::beta_gen);
         for i in 0..100 {
             assert_eq!(points[i], horner(&coeffs, &Fp::beta_gen.pow(&[i as u64])));
+        }
+    }
+
+    #[test]
+    fn test_fft3_in_place() {
+        let mut rng = rand::thread_rng();
+        let coeffs: Vec<Fp> = (0..(Fp::B)).map(|_| Fp::random(&mut rng)).collect();
+        let mut points = coeffs.to_vec();
+        fft3_in_place(&mut points, &Fp::beta_gen);
+        for i in 0..1024 {
+            let actual = points[i];
+            let expected = horner(&coeffs, &Fp::beta_gen.pow(&[i as u64]));
+            assert!(actual == expected,
+                    format!("point {} is incorrect\n\
+                             \tfound:    {:?}\n\
+                             \texpected: {:?}", i, actual, expected));
         }
     }
 
@@ -299,29 +352,30 @@ mod tests {
     fn test_fft3_inverse() {
         let mut rng = rand::thread_rng();
         let points: Vec<Fp> = (0..(Fp::B)).map(|_| Fp::random(&mut rng)).collect();
-        let coeffs = fft3_inverse(points.clone());
+        let mut coeffs = points.to_vec();
+        fft3_inverse(&mut coeffs, &Fp::beta_gen);
         points.iter().take(100).enumerate().for_each(|(idx, point)| {
             assert_eq!(*point, horner(&coeffs, &Fp::beta_gen.pow(&[idx as u64])));
         })
     }
 
-    #[test]
-    fn test_bit_reverse_copy() {
-        let mut rng = rand::thread_rng();
-        let a: Vec<Fp> = (0..256).map(|_| Fp::random(&mut rng)).collect();
-        let bit_reversed = bit_reverse_copy_u16(&a, 8);
-        assert_eq!(a[0], bit_reversed[0]);
-        assert_eq!(a[146], bit_reversed[73]);
-        assert_eq!(a[160], bit_reversed[5]);
-    }
+    // #[test]
+    // fn test_bit_reverse_copy() {
+    //     let mut rng = rand::thread_rng();
+    //     let a: Vec<Fp> = (0..256).map(|_| Fp::random(&mut rng)).collect();
+    //     let bit_reversed = bit_reverse_copy_u16(&a, 8);
+    //     assert_eq!(a[0], bit_reversed[0]);
+    //     assert_eq!(a[146], bit_reversed[73]);
+    //     assert_eq!(a[160], bit_reversed[5]);
+    // }
 
-    #[test]
-    fn test_reverse_bits() {
-        assert_eq!(809u16, reverse_bits_u16(595u16, 10));
-        assert_eq!(8183u16, reverse_bits_u16(7679u16, 13));
-        assert_eq!(7679u16, reverse_bits_u16(8183u16, 13));
-        assert_eq!(11u16, reverse_bits_u16(52u16, 6));
-    }
+    // #[test]
+    // fn test_reverse_bits() {
+    //     assert_eq!(809u16, reverse_bits_u16(595u16, 10));
+    //     assert_eq!(8183u16, reverse_bits_u16(7679u16, 13));
+    //     assert_eq!(7679u16, reverse_bits_u16(8183u16, 13));
+    //     assert_eq!(11u16, reverse_bits_u16(52u16, 6));
+    // }
 
     #[test]
     fn test_digit_reverse_swap() {
