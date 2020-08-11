@@ -1,0 +1,28 @@
+[package]
+name = "ole"
+version = "0.0.0"
+authors = ["nfk93 <nfk1993@gmail.com>"]
+edition = "2018"
+
+[lib]
+name = "ole"
+
+[dependencies]
+ff = {version = "0.6", features = ["derive"]}
+rand = "0.7"
+rand_core = "0.5"
+
+[dependencies.scuttlebutt]
+git = "https://github.com/GaloisInc/swanky.git"
+package = "scuttlebutt"
+
+[dependencies.ocelot]
+git = "https://github.com/GaloisInc/swanky.git"
+package = "ocelot"
+
+[dev-dependencies]
+criterion = "0.3"
+
+[[bench]]
+name = "bench_fft"
+harness = false
