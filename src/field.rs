@@ -305,6 +305,23 @@ fn poly_add(a: &mut [Fp], b: &[Fp]) {
     }
 }
 
+fn poly_from_roots(a: &[Fp]) -> Vec<Fp> {
+    let mut result = vec!(Fp::zero(); a.len());
+    for i in 0..result.len() {
+        let mut a_neg = a[i];
+        a_neg.negate();
+        result[i] = Fp::one();
+        for j in (1..i+1).rev() {
+            result[j].mul_assign(&a_neg);
+            let rj_1 = result[j-1];
+            result[j].add_assign(&rj_1);
+        }
+        result[0].mul_assign(&a_neg)
+    }
+    result.push(Fp::one());
+    return result
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -370,6 +387,24 @@ mod tests {
         assert_eq!(Fp::from_str("288944").unwrap(), horner(&coeffs, &Fp::from_str("123").unwrap()))
     }
 
+    #[test]
+    fn test_poly_from_roots() {
+        let mut rng = rand::thread_rng();
+        let roots: Vec<Fp> = (0..100).map(|_| Fp::random(&mut rng)).collect();
+        let coeffs = poly_from_roots(&roots);
+        for root in roots {
+            assert_eq!(horner(&coeffs, &root), Fp::zero());
+        }
+
+        let roots = [Fp::from_repr(FpRepr::from(1231)).unwrap(),
+                     Fp::from_repr(FpRepr::from(2)).unwrap(),
+                     Fp::from_repr(FpRepr::from(17)).unwrap()];
+        let coeffs = poly_from_roots(&roots);
+        assert_eq!(horner(&coeffs, &Fp::from_repr(FpRepr::from(1111)).unwrap()),
+                   Fp::from_str("152137607412117916810699707336663532273").unwrap());
+        assert_eq!(horner(&coeffs, &Fp::from_str("213131").unwrap()),
+                   Fp::from_str("9624661948301400").unwrap());
+    }
 
     #[test]
     fn test_alpha() {
@@ -460,24 +495,6 @@ mod tests {
             assert_eq!(*point, horner(&coeffs, &Fp::beta_gen.pow(&[idx as u64])));
         })
     }
-
-    // #[test]
-    // fn test_bit_reverse_copy() {
-    //     let mut rng = rand::thread_rng();
-    //     let a: Vec<Fp> = (0..256).map(|_| Fp::random(&mut rng)).collect();
-    //     let bit_reversed = bit_reverse_copy_u16(&a, 8);
-    //     assert_eq!(a[0], bit_reversed[0]);
-    //     assert_eq!(a[146], bit_reversed[73]);
-    //     assert_eq!(a[160], bit_reversed[5]);
-    // }
-
-    // #[test]
-    // fn test_reverse_bits() {
-    //     assert_eq!(809u16, reverse_bits_u16(595u16, 10));
-    //     assert_eq!(8183u16, reverse_bits_u16(7679u16, 13));
-    //     assert_eq!(7679u16, reverse_bits_u16(8183u16, 13));
-    //     assert_eq!(11u16, reverse_bits_u16(52u16, 6));
-    // }
 
     #[test]
     fn test_digit_reverse_swap() {
