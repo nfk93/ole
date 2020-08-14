@@ -5,7 +5,7 @@ pub fn horner<F: Field>(coefficients: &[F], variable: &F) -> F {
         let mut a = acc.clone();
         a.mul_assign(variable);
         a.add_assign(coeff);
-        return a
+        return a;
     })
 }
 
@@ -14,7 +14,7 @@ pub fn horner<F: Field>(coefficients: &[F], variable: &F) -> F {
 // precondition: leading coefficient of a and b (i.e. a[a.len() -1]) is nonzero
 pub fn euclid_division<F: Field>(a: &[F], b: &[F]) -> (Vec<F>, Vec<F>) {
     let mut deg_r = a.len() - 1;
-    let mut q = vec!(F::zero(); deg_r + 1);
+    let mut q = vec![F::zero(); deg_r + 1];
     let mut r = a.to_vec();
     let d = b.len() - 1; // degree of b
     let c = b[d].inverse().unwrap(); // c = lc(b)^-1
@@ -30,29 +30,28 @@ pub fn euclid_division<F: Field>(a: &[F], b: &[F]) -> (Vec<F>, Vec<F>) {
         'update_deg_r: loop {
             if r[deg_r].is_zero() {
                 deg_r -= 1;
-            }
-            else {
+            } else {
                 r.truncate(deg_r + 1);
                 break 'update_deg_r;
             }
         }
     }
-    return (q, r)
+    return (q, r);
 }
 
 #[cfg(test)]
 fn naive_poly_mult<F: Field>(a: &[F], b: &[F]) -> Vec<F> {
-    let mut prod = vec!(F::zero(); a.len() + b.len() - 1);
+    let mut prod = vec![F::zero(); a.len() + b.len() - 1];
 
     for i in 0..a.len() {
-       for j in 0..b.len() {
-           let mut ab = a[i];
-           ab.mul_assign(&b[j]);
-           prod[i+j].add_assign(&ab);
-       }
+        for j in 0..b.len() {
+            let mut ab = a[i];
+            ab.mul_assign(&b[j]);
+            prod[i + j].add_assign(&ab);
+        }
     }
 
-    return prod
+    return prod;
 }
 
 // adds polynomial b to polynomial a.
@@ -64,20 +63,20 @@ fn poly_add<F: Field>(a: &mut [F], b: &[F]) {
 }
 
 pub fn poly_from_roots<F: Field>(a: &[F]) -> Vec<F> {
-    let mut result = vec!(F::zero(); a.len());
+    let mut result = vec![F::zero(); a.len()];
     for i in 0..result.len() {
         let mut a_neg = a[i];
         a_neg.negate();
         result[i] = F::one();
-        for j in (1..i+1).rev() {
+        for j in (1..i + 1).rev() {
             result[j].mul_assign(&a_neg);
-            let rj_1 = result[j-1];
+            let rj_1 = result[j - 1];
             result[j].add_assign(&rj_1);
         }
         result[0].mul_assign(&a_neg)
     }
     result.push(F::one());
-    return result
+    return result;
 }
 
 // Performs lagrangian interpolation at zero
@@ -106,12 +105,11 @@ pub fn lagrangian_interpolation<F: Field>(xs: &[F], ys: &[F]) -> F {
     result
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::field::{Fp, FpRepr, OleField};
     use crate::fft::fft2;
+    use crate::field::{Fp, FpRepr, OleField};
     use ff::PrimeField;
     use rand;
     use rand::seq::IteratorRandom;
@@ -119,13 +117,13 @@ mod tests {
     #[test]
     fn test_lagrangian_interpolation() {
         let mut rng = rand::thread_rng();
-        let mut coeffs: Vec<Fp> = (0..Fp::A/2).map(|_| Fp::random(&mut rng)).collect();
+        let mut coeffs: Vec<Fp> = (0..Fp::A / 2).map(|_| Fp::random(&mut rng)).collect();
         coeffs.resize_with(Fp::A, Fp::zero);
 
         let mut ys = coeffs.to_vec();
         Fp::fft2(&mut ys, &Fp::alpha());
 
-        let xs = (0..Fp::A).choose_multiple(&mut rng, Fp::A/2);
+        let xs = (0..Fp::A).choose_multiple(&mut rng, Fp::A / 2);
         let ys_: Vec<Fp> = xs.iter().map(|i| ys[*i]).collect();
         let xs_: Vec<Fp> = xs.iter().map(|i| Fp::alpha().pow([*i as u64])).collect();
 
@@ -173,7 +171,7 @@ mod tests {
         let mut rng = rand::thread_rng();
         let a: Vec<Fp> = (0..83).map(|_| Fp::random(&mut rng)).collect();
         let b: Vec<Fp> = (0..22).map(|_| Fp::random(&mut rng)).collect();
-        let (q,r) = euclid_division(&a, &b);
+        let (q, r) = euclid_division(&a, &b);
         let mut actual = naive_poly_mult(&q, &b);
         println!("{:?}", q);
         println!("{:?}", r);
@@ -189,8 +187,12 @@ mod tests {
         let coeffs = [
             Fp::from_repr(FpRepr::from(17)).unwrap(),
             Fp::from_repr(FpRepr::from(12)).unwrap(),
-            Fp::from_repr(FpRepr::from(19)).unwrap()];
-        assert_eq!(Fp::from_str("288944").unwrap(), horner(&coeffs, &Fp::from_str("123").unwrap()))
+            Fp::from_repr(FpRepr::from(19)).unwrap(),
+        ];
+        assert_eq!(
+            Fp::from_str("288944").unwrap(),
+            horner(&coeffs, &Fp::from_str("123").unwrap())
+        )
     }
 
     #[test]
@@ -202,13 +204,19 @@ mod tests {
             assert_eq!(horner(&coeffs, &root), Fp::zero());
         }
 
-        let roots = [Fp::from_repr(FpRepr::from(1231)).unwrap(),
-                     Fp::from_repr(FpRepr::from(2)).unwrap(),
-                     Fp::from_repr(FpRepr::from(17)).unwrap()];
+        let roots = [
+            Fp::from_repr(FpRepr::from(1231)).unwrap(),
+            Fp::from_repr(FpRepr::from(2)).unwrap(),
+            Fp::from_repr(FpRepr::from(17)).unwrap(),
+        ];
         let coeffs = poly_from_roots(&roots);
-        assert_eq!(horner(&coeffs, &Fp::from_repr(FpRepr::from(1111)).unwrap()),
-                   Fp::from_str("152137607412117916810699707336663532273").unwrap());
-        assert_eq!(horner(&coeffs, &Fp::from_str("213131").unwrap()),
-                   Fp::from_str("9624661948301400").unwrap());
+        assert_eq!(
+            horner(&coeffs, &Fp::from_repr(FpRepr::from(1111)).unwrap()),
+            Fp::from_str("152137607412117916810699707336663532273").unwrap()
+        );
+        assert_eq!(
+            horner(&coeffs, &Fp::from_str("213131").unwrap()),
+            Fp::from_str("9624661948301400").unwrap()
+        );
     }
 }

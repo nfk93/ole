@@ -1,5 +1,5 @@
-use ff::{Field, PrimeField, PrimeFieldDecodingError, PrimeFieldRepr};
 use crate::fft;
+use ff::{Field, PrimeField, PrimeFieldDecodingError, PrimeFieldRepr};
 
 // Prime q = 152137607412117916810699707336809121793, with bit size 127
 // q = (138 * 54697345034152330060240659727 * 20155392) + 1

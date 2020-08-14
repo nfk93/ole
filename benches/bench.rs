@@ -1,14 +1,16 @@
 #[macro_use]
 extern crate criterion;
 
-use ole::fft::{fft2_in_place, fft2_inverse, fft2, fft3_in_place, fft3_inverse, fft3, digit_reverse_swap};
-use ole::field::{Fp, OleField};
-use ole::poly::{euclid_division, poly_from_roots, lagrangian_interpolation};
+use criterion::Criterion;
 use ff::Field;
+use ole::fft::{
+    digit_reverse_swap, fft2, fft2_in_place, fft2_inverse, fft3, fft3_in_place, fft3_inverse,
+};
+use ole::field::{Fp, OleField};
+use ole::poly::{euclid_division, lagrangian_interpolation, poly_from_roots};
+use ole::shamir::{reconstruct, share};
 use rand;
 use rand::seq::IteratorRandom;
-use criterion::Criterion;
-use ole::shamir::{share, reconstruct};
 
 pub fn bench_fft2_in_place(c: &mut Criterion) {
     let mut rng = rand::thread_rng();
@@ -58,33 +60,36 @@ pub fn bench_fft3_inverse(c: &mut Criterion) {
     });
 }
 
-
 pub fn bench_digit_reverse_swap(c: &mut Criterion) {
     let mut rng = rand::thread_rng();
 
     let n = 2usize.pow(11 as u32);
     let mut data: Vec<Fp> = (0..n).map(|_| Fp::random(&mut rng)).collect();
-    c.bench_function(&format!("digit_reverse_swap, size {}, base 2", n), move |b| {
-        b.iter(|| digit_reverse_swap(&mut data, 2))
-    });
+    c.bench_function(
+        &format!("digit_reverse_swap, size {}, base 2", n),
+        move |b| b.iter(|| digit_reverse_swap(&mut data, 2)),
+    );
 
     let n = 2usize.pow(22 as u32);
     let mut data: Vec<Fp> = (0..n).map(|_| Fp::random(&mut rng)).collect();
-    c.bench_function(&format!("digit_reverse_swap, size {}, base 2", n), move |b| {
-        b.iter(|| digit_reverse_swap(&mut data, 2))
-    });
+    c.bench_function(
+        &format!("digit_reverse_swap, size {}, base 2", n),
+        move |b| b.iter(|| digit_reverse_swap(&mut data, 2)),
+    );
 
     let n = 3usize.pow(10 as u32);
     let mut data: Vec<Fp> = (0..n).map(|_| Fp::random(&mut rng)).collect();
-    c.bench_function(&format!("digit_reverse_swap, size {}, base 3", n), move |b| {
-        b.iter(|| digit_reverse_swap(&mut data, 3))
-    });
+    c.bench_function(
+        &format!("digit_reverse_swap, size {}, base 3", n),
+        move |b| b.iter(|| digit_reverse_swap(&mut data, 3)),
+    );
 
     let n = 3usize.pow(15 as u32);
     let mut data: Vec<Fp> = (0..n).map(|_| Fp::random(&mut rng)).collect();
-    c.bench_function(&format!("digit_reverse_swap, size {}, base 3", n), move |b| {
-        b.iter(|| digit_reverse_swap(&mut data, 3))
-    });
+    c.bench_function(
+        &format!("digit_reverse_swap, size {}, base 3", n),
+        move |b| b.iter(|| digit_reverse_swap(&mut data, 3)),
+    );
 }
 
 pub fn bench_poly_from_roots(c: &mut Criterion) {
@@ -110,17 +115,19 @@ pub fn bench_euclid_division(c: &mut Criterion) {
     let nb = 2usize.pow(11 as u32);
     let mut a: Vec<Fp> = (0..na).map(|_| Fp::random(&mut rng)).collect();
     let mut b: Vec<Fp> = (0..nb).map(|_| Fp::random(&mut rng)).collect();
-    c.bench_function(&format!("euclid_division1, size a = {}, size b = {}", na, nb), move |b_| {
-        b_.iter(|| euclid_division(&mut a, &b))
-    });
+    c.bench_function(
+        &format!("euclid_division1, size a = {}, size b = {}", na, nb),
+        move |b_| b_.iter(|| euclid_division(&mut a, &b)),
+    );
 
     let na = 3usize.pow(9 as u32);
     let n = 3usize.pow(9) - 2usize.pow(11);
     let mut a: Vec<Fp> = (0..na).map(|_| Fp::random(&mut rng)).collect();
     let mut b: Vec<Fp> = (0..nb).map(|_| Fp::random(&mut rng)).collect();
-    c.bench_function(&format!("euclid_division2, size a = {}, size b = {}", na, nb), move |b_| {
-        b_.iter(|| euclid_division(&mut a, &b))
-    });
+    c.bench_function(
+        &format!("euclid_division2, size a = {}, size b = {}", na, nb),
+        move |b_| b_.iter(|| euclid_division(&mut a, &b)),
+    );
 }
 
 pub fn bench_lagrange(c: &mut Criterion) {
@@ -129,9 +136,10 @@ pub fn bench_lagrange(c: &mut Criterion) {
     let ys: Vec<Fp> = (0..n).map(|_| Fp::random(&mut rng)).collect();
     let xs: Vec<Fp> = (0..n).map(|_| Fp::random(&mut rng)).collect();
 
-    c.bench_function(&format!("lagrangian_interpolation in 0, {} points", n), move |b_| {
-        b_.iter(|| lagrangian_interpolation(&xs, &ys))
-    });
+    c.bench_function(
+        &format!("lagrangian_interpolation in 0, {} points", n),
+        move |b_| b_.iter(|| lagrangian_interpolation(&xs, &ys)),
+    );
 }
 
 pub fn bench_share(c: &mut Criterion) {
@@ -158,14 +166,36 @@ pub fn bench_reconstruct(c: &mut Criterion) {
     indices.sort();
     let mut myshares: Vec<Fp> = indices.iter().map(|i| shares[*i as usize]).collect();
 
-    c.bench_function(&format!("reconstruct, n = {}, rho = {}", n, rho), move |b_| {
-        b_.iter(|| reconstruct(&indices, &myshares, n, rho, &omega))
-    });
+    c.bench_function(
+        &format!("reconstruct, n = {}, rho = {}", n, rho),
+        move |b_| b_.iter(|| reconstruct(&indices, &myshares, n, rho, &omega)),
+    );
 }
 
 criterion_group!(bench_ss, bench_share, bench_reconstruct);
-criterion_group!(bench_poly, bench_poly_from_roots, bench_euclid_division, bench_lagrange);
-criterion_group!(bench_fft2, bench_fft2_in_place, bench_fft2_inverse, bench_fft2_out_of_place);
-criterion_group!(bench_fft3, bench_fft3_in_place, bench_fft3_inverse, bench_fft3_out_of_place);
+criterion_group!(
+    bench_poly,
+    bench_poly_from_roots,
+    bench_euclid_division,
+    bench_lagrange
+);
+criterion_group!(
+    bench_fft2,
+    bench_fft2_in_place,
+    bench_fft2_inverse,
+    bench_fft2_out_of_place
+);
+criterion_group!(
+    bench_fft3,
+    bench_fft3_in_place,
+    bench_fft3_inverse,
+    bench_fft3_out_of_place
+);
 criterion_group!(bench_digit_reverse, bench_digit_reverse_swap);
-criterion_main!(bench_fft2, bench_fft3, bench_digit_reverse, bench_poly, bench_ss);
+criterion_main!(
+    bench_fft2,
+    bench_fft3,
+    bench_digit_reverse,
+    bench_poly,
+    bench_ss
+);
