@@ -11,6 +11,7 @@ name = "ole"
 ff = {version = "0.6", features = ["derive"]}
 rand = "0.7"
 rand_core = "0.5"
+sha2 = "0.9"
 
 [dependencies.scuttlebutt]
 git = "https://github.com/GaloisInc/swanky.git"

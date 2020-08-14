@@ -13,11 +13,11 @@ pub struct Fp(FpRepr);
 // A field with special properties that enable interpolation and evaluation at a set of
 // predetermined alphas and betas in the field using FFT.
 pub trait OleField: PrimeField {
-    const ALPHA: Self; // generator of order A multiplicative subgroup
-    const A: usize; // order of ALPHA
+    fn alpha() -> Self; // generator of order A multiplicative subgroup
+    const A: usize; // order of alpha()
 
-    const BETA: Self; // generator of order B multiplicative subgroup
-    const B: usize; // order of BETA
+    fn beta() -> Self; // generator of order B multiplicative subgroup
+    const B: usize; // order of beta()
 
     // In-place radix2 DIT FFT
     // After inputting coeffs with coeffs.len() = n = 2^k we have coeffs[i] = f(alpha^i)
@@ -38,14 +38,21 @@ pub trait OleField: PrimeField {
     // Inverse radix3 DIT FFT
     // Inverse of fft3
     fn fft3_inverse(ys: &mut [Self], beta: &Self);
+
+    // fn to_bytes(&self) -> u8;
 }
 
 impl OleField for Fp {
     const A: usize = 1024;
     const B: usize = 19683;
 
-    const ALPHA: Self = Fp(FpRepr([0xc06ef38a81bc942a, 0x0a90ee143aa2da39]));
-    const BETA: Self = Fp(FpRepr([0x7eaba55f322cb079, 0x5bdbc004d5e45ace]));
+    fn alpha() -> Self {
+        Fp(FpRepr([0xc06ef38a81bc942a, 0x0a90ee143aa2da39]))
+    }
+
+    fn beta() -> Self {
+        Fp(FpRepr([0x7eaba55f322cb079, 0x5bdbc004d5e45ace]))
+    }
 
     fn fft2(coeffs: &mut [Self], alpha: &Self) {
         fft::fft2_in_place(coeffs, alpha);
@@ -62,4 +69,6 @@ impl OleField for Fp {
     fn fft3_inverse(ys: &mut [Self], beta: &Self) {
         fft::fft3_inverse(ys, beta);
     }
+
+    // fn to_bytes(&self) -> Vec<u8>
 }

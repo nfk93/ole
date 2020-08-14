@@ -42,7 +42,7 @@ mod tests {
         let secret = Fp::random(&mut rng);
         let n = 3u64.pow(7);
         let rho = n - 2u64.pow(8);
-        let omega = Fp::BETA.pow([9]);
+        let omega = Fp::beta().pow([9]);
 
         let shares = share(&secret, n, rho, &omega);
         let mut indices: Vec<u64> = (0..n).choose_multiple(&mut rng, rho as usize);

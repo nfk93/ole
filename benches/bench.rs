@@ -14,7 +14,7 @@ pub fn bench_fft2_in_place(c: &mut Criterion) {
     let mut rng = rand::thread_rng();
     let mut coeffs: Vec<Fp> = (0..1024).map(|_| Fp::random(&mut rng)).collect();
     c.bench_function("fft2_in_place, 1024 points", move |b| {
-        b.iter(|| fft2_in_place(&mut coeffs, &Fp::ALPHA))
+        b.iter(|| fft2_in_place(&mut coeffs, &Fp::alpha()))
     });
 }
 
@@ -22,7 +22,7 @@ pub fn bench_fft2_out_of_place(c: &mut Criterion) {
     let mut rng = rand::thread_rng();
     let coeffs: Vec<Fp> = (0..1024).map(|_| Fp::random(&mut rng)).collect();
     c.bench_function("fft2, 1024 points", move |b| {
-        b.iter(|| fft2(&coeffs, &Fp::ALPHA))
+        b.iter(|| fft2(&coeffs, &Fp::alpha()))
     });
 }
 
@@ -30,7 +30,7 @@ pub fn bench_fft3_in_place(c: &mut Criterion) {
     let mut rng = rand::thread_rng();
     let mut coeffs: Vec<Fp> = (0..Fp::B).map(|_| Fp::random(&mut rng)).collect();
     c.bench_function(&format!("fft3_in_place, {} points", Fp::B), move |b| {
-        b.iter(|| fft3_in_place(&mut coeffs, &Fp::BETA))
+        b.iter(|| fft3_in_place(&mut coeffs, &Fp::beta()))
     });
 }
 
@@ -38,7 +38,7 @@ pub fn bench_fft3_out_of_place(c: &mut Criterion) {
     let mut rng = rand::thread_rng();
     let coeffs: Vec<Fp> = (0..Fp::B).map(|_| Fp::random(&mut rng)).collect();
     c.bench_function(&format!("fft3, {} points", Fp::B), move |b| {
-        b.iter(|| fft3(&coeffs, &Fp::BETA))
+        b.iter(|| fft3(&coeffs, &Fp::beta()))
     });
 }
 
@@ -46,7 +46,7 @@ pub fn bench_fft2_inverse(c: &mut Criterion) {
     let mut rng = rand::thread_rng();
     let mut points: Vec<Fp> = (0..Fp::A).map(|_| Fp::random(&mut rng)).collect();
     c.bench_function(&format!("fft2_inverse, {} points", Fp::A), move |b| {
-        b.iter(|| fft2_inverse(&mut points, &Fp::BETA))
+        b.iter(|| fft2_inverse(&mut points, &Fp::beta()))
     });
 }
 
@@ -54,7 +54,7 @@ pub fn bench_fft3_inverse(c: &mut Criterion) {
     let mut rng = rand::thread_rng();
     let mut points: Vec<Fp> = (0..Fp::B).map(|_| Fp::random(&mut rng)).collect();
     c.bench_function(&format!("fft3_inverse, {} points", Fp::B), move |b| {
-        b.iter(|| fft3_inverse(&mut points, &Fp::BETA))
+        b.iter(|| fft3_inverse(&mut points, &Fp::beta()))
     });
 }
 
@@ -139,7 +139,7 @@ pub fn bench_share(c: &mut Criterion) {
     let secret = Fp::random(&mut rng);
     let n = 3u64.pow(7);
     let rho = n - 2u64.pow(8);
-    let omega = Fp::BETA.pow([9]);
+    let omega = Fp::beta().pow([9]);
 
     c.bench_function(&format!("share, n = {}, rho = {}", n, rho), move |b_| {
         b_.iter(|| share(&secret, n, rho, &omega))
@@ -151,14 +151,15 @@ pub fn bench_reconstruct(c: &mut Criterion) {
     let secret = Fp::random(&mut rng);
     let n = 3u64.pow(7);
     let rho = n - 2u64.pow(8);
-    let omega = Fp::BETA.pow([9]);
+    let omega = Fp::beta().pow([9]);
 
     let shares = share(&secret, n, rho, &omega);
     let mut indices: Vec<u64> = (0..n).choose_multiple(&mut rng, rho as usize);
     indices.sort();
+    let mut myshares: Vec<Fp> = indices.iter().map(|i| shares[*i as usize]).collect();
 
     c.bench_function(&format!("reconstruct, n = {}, rho = {}", n, rho), move |b_| {
-        b_.iter(|| reconstruct(&indices, &shares, n, rho, &omega))
+        b_.iter(|| reconstruct(&indices, &myshares, n, rho, &omega))
     });
 }
 

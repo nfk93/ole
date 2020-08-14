@@ -123,11 +123,11 @@ mod tests {
         coeffs.resize_with(Fp::A, Fp::zero);
 
         let mut ys = coeffs.to_vec();
-        Fp::fft2(&mut ys, &Fp::ALPHA);
+        Fp::fft2(&mut ys, &Fp::alpha());
 
         let xs = (0..Fp::A).choose_multiple(&mut rng, Fp::A/2);
         let ys_: Vec<Fp> = xs.iter().map(|i| ys[*i]).collect();
-        let xs_: Vec<Fp> = xs.iter().map(|i| Fp::ALPHA.pow([*i as u64])).collect();
+        let xs_: Vec<Fp> = xs.iter().map(|i| Fp::alpha().pow([*i as u64])).collect();
 
         let result = lagrangian_interpolation(&xs_, &ys_);
         assert_eq!(result, coeffs[0]);
