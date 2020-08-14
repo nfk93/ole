@@ -90,13 +90,13 @@ pub fn bench_poly_from_roots(c: &mut Criterion) {
 
     let n = 2usize.pow(11 as u32);
     let mut data: Vec<Fp> = (0..n).map(|_| Fp::random(&mut rng)).collect();
-    c.bench_function(&format!("poly_from_roots, size {}", n), move |b| {
+    c.bench_function(&format!("poly_from_roots1, size {}", n), move |b| {
         b.iter(|| poly_from_roots(&mut data))
     });
 
     let n = 3usize.pow(9) - 2usize.pow(11);
     let mut data: Vec<Fp> = (0..n).map(|_| Fp::random(&mut rng)).collect();
-    c.bench_function(&format!("poly_from_roots, size {}", n), move |b| {
+    c.bench_function(&format!("poly_from_roots2, size {}", n), move |b| {
         b.iter(|| poly_from_roots(&mut data))
     });
 }
@@ -108,7 +108,15 @@ pub fn bench_euclid_division(c: &mut Criterion) {
     let nb = 2usize.pow(11 as u32);
     let mut a: Vec<Fp> = (0..na).map(|_| Fp::random(&mut rng)).collect();
     let mut b: Vec<Fp> = (0..nb).map(|_| Fp::random(&mut rng)).collect();
-    c.bench_function(&format!("euclid_division, size a = {}, size b = {}", na, nb), move |b_| {
+    c.bench_function(&format!("euclid_division1, size a = {}, size b = {}", na, nb), move |b_| {
+        b_.iter(|| euclid_division(&mut a, &b))
+    });
+
+    let na = 3usize.pow(9 as u32);
+    let n = 3usize.pow(9) - 2usize.pow(11);
+    let mut a: Vec<Fp> = (0..na).map(|_| Fp::random(&mut rng)).collect();
+    let mut b: Vec<Fp> = (0..nb).map(|_| Fp::random(&mut rng)).collect();
+    c.bench_function(&format!("euclid_division2, size a = {}, size b = {}", na, nb), move |b_| {
         b_.iter(|| euclid_division(&mut a, &b))
     });
 }
