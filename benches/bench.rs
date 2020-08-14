@@ -6,7 +6,9 @@ use ole::field::{Fp, OleField};
 use ole::poly::{euclid_division, poly_from_roots, lagrangian_interpolation};
 use ff::Field;
 use rand;
+use rand::seq::IteratorRandom;
 use criterion::Criterion;
+use ole::shamir::{share, reconstruct};
 
 pub fn bench_fft2_in_place(c: &mut Criterion) {
     let mut rng = rand::thread_rng();
@@ -94,7 +96,7 @@ pub fn bench_poly_from_roots(c: &mut Criterion) {
         b.iter(|| poly_from_roots(&mut data))
     });
 
-    let n = 3usize.pow(9) - 2usize.pow(11);
+    let n = 3usize.pow(7) - 2usize.pow(8);
     let mut data: Vec<Fp> = (0..n).map(|_| Fp::random(&mut rng)).collect();
     c.bench_function(&format!("poly_from_roots2, size {}", n), move |b| {
         b.iter(|| poly_from_roots(&mut data))
@@ -123,7 +125,7 @@ pub fn bench_euclid_division(c: &mut Criterion) {
 
 pub fn bench_lagrange(c: &mut Criterion) {
     let mut rng = rand::thread_rng();
-    let n = 1024;
+    let n = 3u64.pow(7) - 2u64.pow(8);
     let ys: Vec<Fp> = (0..n).map(|_| Fp::random(&mut rng)).collect();
     let xs: Vec<Fp> = (0..n).map(|_| Fp::random(&mut rng)).collect();
 
@@ -132,8 +134,37 @@ pub fn bench_lagrange(c: &mut Criterion) {
     });
 }
 
+pub fn bench_share(c: &mut Criterion) {
+    let mut rng = rand::thread_rng();
+    let secret = Fp::random(&mut rng);
+    let n = 3u64.pow(7);
+    let rho = n - 2u64.pow(8);
+    let omega = Fp::BETA.pow([9]);
+
+    c.bench_function(&format!("share, n = {}, rho = {}", n, rho), move |b_| {
+        b_.iter(|| share(&secret, n, rho, &omega))
+    });
+}
+
+pub fn bench_reconstruct(c: &mut Criterion) {
+    let mut rng = rand::thread_rng();
+    let secret = Fp::random(&mut rng);
+    let n = 3u64.pow(7);
+    let rho = n - 2u64.pow(8);
+    let omega = Fp::BETA.pow([9]);
+
+    let shares = share(&secret, n, rho, &omega);
+    let mut indices: Vec<u64> = (0..n).choose_multiple(&mut rng, rho as usize);
+    indices.sort();
+
+    c.bench_function(&format!("reconstruct, n = {}, rho = {}", n, rho), move |b_| {
+        b_.iter(|| reconstruct(&indices, &shares, n, rho, &omega))
+    });
+}
+
+criterion_group!(bench_ss, bench_share, bench_reconstruct);
 criterion_group!(bench_poly, bench_poly_from_roots, bench_euclid_division, bench_lagrange);
 criterion_group!(bench_fft2, bench_fft2_in_place, bench_fft2_inverse, bench_fft2_out_of_place);
 criterion_group!(bench_fft3, bench_fft3_in_place, bench_fft3_inverse, bench_fft3_out_of_place);
 criterion_group!(bench_digit_reverse, bench_digit_reverse_swap);
-criterion_main!(bench_fft2, bench_fft3, bench_digit_reverse, bench_poly);
+criterion_main!(bench_fft2, bench_fft3, bench_digit_reverse, bench_poly, bench_ss);

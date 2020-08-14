@@ -282,9 +282,21 @@ mod tests {
         let coeffs: Vec<Fp> = (0..(Fp::B)).map(|_| Fp::random(&mut rng)).collect();
         let mut points = coeffs.to_vec();
         fft3_in_place(&mut points, &Fp::BETA);
-        for i in 0..1024 {
+        for i in 0..102 {
             let actual = points[i];
             let expected = horner(&coeffs, &Fp::BETA.pow(&[i as u64]));
+            assert!(actual == expected,
+                    format!("point {} is incorrect\n\
+                             \tfound:    {:?}\n\
+                             \texpected: {:?}", i, actual, expected));
+        }
+
+        let coeffs: Vec<Fp> = (0..(Fp::B/9)).map(|_| Fp::random(&mut rng)).collect();
+        let mut points = coeffs.to_vec();
+        fft3_in_place(&mut points, &Fp::BETA.pow([9]));
+        for i in 0..102 {
+            let actual = points[i];
+            let expected = horner(&coeffs, &Fp::BETA.pow(&[9*i as u64]));
             assert!(actual == expected,
                     format!("point {} is incorrect\n\
                              \tfound:    {:?}\n\
