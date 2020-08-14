@@ -80,12 +80,58 @@ pub fn poly_from_roots<F: Field>(a: &[F]) -> Vec<F> {
     return result
 }
 
+// Performs lagrangian interpolation at zero
+// Precondition: xs.len() == ys.len()
+pub fn lagrangian_interpolation<F: Field>(xs: &[F], ys: &[F]) -> F {
+    let mut result = F::zero();
+    for i in 0..xs.len() {
+        // let mut xi_neg = xs[i];
+        // xi_neg.negate();
+        let mut numer = F::one();
+        let mut denom = F::one();
+        for (j, xj) in xs.iter().enumerate() {
+            if j != i {
+                numer.mul_assign(xj);
+                let mut xj_minus_xi = *xj;
+                // xj_minus_xi.add_assign(&xi_neg);
+                xj_minus_xi.sub_assign(&xs[i]);
+                denom.mul_assign(&xj_minus_xi);
+            }
+        }
+        let mut yi_lagrange = ys[i];
+        yi_lagrange.mul_assign(&numer);
+        yi_lagrange.mul_assign(&denom.inverse().unwrap());
+        result.add_assign(&yi_lagrange);
+    }
+    result
+}
+
+
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::field::{Fp, FpRepr};
+    use crate::field::{Fp, FpRepr, OleField};
+    use crate::fft::fft2;
     use ff::PrimeField;
     use rand;
+    use rand::seq::IteratorRandom;
+
+    #[test]
+    fn test_lagrangian_interpolation() {
+        let mut rng = rand::thread_rng();
+        let mut coeffs: Vec<Fp> = (0..Fp::A/2).map(|_| Fp::random(&mut rng)).collect();
+        coeffs.resize_with(Fp::A, Fp::zero);
+
+        let mut ys = coeffs.to_vec();
+        Fp::fft2(&mut ys, &Fp::ALPHA);
+
+        let xs = (0..Fp::A).choose_multiple(&mut rng, Fp::A/2);
+        let ys_: Vec<Fp> = xs.iter().map(|i| ys[*i]).collect();
+        let xs_: Vec<Fp> = xs.iter().map(|i| Fp::ALPHA.pow([*i as u64])).collect();
+
+        let result = lagrangian_interpolation(&xs_, &ys_);
+        assert_eq!(result, coeffs[0]);
+    }
 
     #[test]
     fn test_poly_add() {

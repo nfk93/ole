@@ -3,7 +3,7 @@ extern crate criterion;
 
 use ole::fft::{fft2_in_place, fft2_inverse, fft2, fft3_in_place, fft3_inverse, fft3, digit_reverse_swap};
 use ole::field::{Fp, OleField};
-use ole::poly::{euclid_division, poly_from_roots};
+use ole::poly::{euclid_division, poly_from_roots, lagrangian_interpolation};
 use ff::Field;
 use rand;
 use criterion::Criterion;
@@ -93,6 +93,12 @@ pub fn bench_poly_from_roots(c: &mut Criterion) {
     c.bench_function(&format!("poly_from_roots, size {}", n), move |b| {
         b.iter(|| poly_from_roots(&mut data))
     });
+
+    let n = 3usize.pow(9) - 2usize.pow(11);
+    let mut data: Vec<Fp> = (0..n).map(|_| Fp::random(&mut rng)).collect();
+    c.bench_function(&format!("poly_from_roots, size {}", n), move |b| {
+        b.iter(|| poly_from_roots(&mut data))
+    });
 }
 
 pub fn bench_euclid_division(c: &mut Criterion) {
@@ -107,7 +113,18 @@ pub fn bench_euclid_division(c: &mut Criterion) {
     });
 }
 
-criterion_group!(bench_poly, bench_poly_from_roots, bench_euclid_division);
+pub fn bench_lagrange(c: &mut Criterion) {
+    let mut rng = rand::thread_rng();
+    let n = 1024;
+    let ys: Vec<Fp> = (0..n).map(|_| Fp::random(&mut rng)).collect();
+    let xs: Vec<Fp> = (0..n).map(|_| Fp::random(&mut rng)).collect();
+
+    c.bench_function(&format!("lagrangian_interpolation in 0, {} points", n), move |b_| {
+        b_.iter(|| lagrangian_interpolation(&xs, &ys))
+    });
+}
+
+criterion_group!(bench_poly, bench_poly_from_roots, bench_euclid_division, bench_lagrange);
 criterion_group!(bench_fft2, bench_fft2_in_place, bench_fft2_inverse, bench_fft2_out_of_place);
 criterion_group!(bench_fft3, bench_fft3_in_place, bench_fft3_inverse, bench_fft3_out_of_place);
 criterion_group!(bench_digit_reverse, bench_digit_reverse_swap);

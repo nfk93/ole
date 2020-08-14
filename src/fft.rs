@@ -335,4 +335,24 @@ mod tests {
         assert_eq!(table[6], 18);
         assert_eq!(table[8], 72);
     }
+
+    #[test]
+    fn test_fft_fft_inverse_identity() {
+        let mut rng = rand::thread_rng();
+        let coeffs: Vec<Fp> = (0..(Fp::B)).map(|_| Fp::random(&mut rng)).collect();
+        let mut coeffs_clone = coeffs.to_vec();
+        fft3_in_place(&mut coeffs_clone, &Fp::BETA);
+        fft3_inverse(&mut coeffs_clone, &Fp::BETA);
+        for (c_actual, c_expected) in coeffs_clone.iter().zip(&coeffs) {
+            assert_eq!(*c_actual, *c_expected);
+        }
+
+        let coeffs: Vec<Fp> = (0..(Fp::A)).map(|_| Fp::random(&mut rng)).collect();
+        let mut coeffs_clone = coeffs.to_vec();
+        fft2_in_place(&mut coeffs_clone, &Fp::ALPHA);
+        fft2_inverse(&mut coeffs_clone, &Fp::ALPHA);
+        for (c_actual, c_expected) in coeffs_clone.iter().zip(&coeffs) {
+            assert_eq!(*c_actual, *c_expected);
+        }
+    }
 }
