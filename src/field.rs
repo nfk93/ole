@@ -1,5 +1,6 @@
 use crate::fft;
 use ff::{Field, PrimeField, PrimeFieldDecodingError, PrimeFieldRepr};
+use scuttlebutt::Block;
 
 // Prime q = 152137607412117916810699707336809121793, with bit size 127
 // q = (138 * 54697345034152330060240659727 * 20155392) + 1
@@ -12,7 +13,7 @@ pub struct Fp(FpRepr);
 
 // A field with special properties that enable interpolation and evaluation at a set of
 // predetermined alphas and betas in the field using FFT.
-pub trait OleField: PrimeField {
+pub trait OleField: PrimeField + From<Block> {
     fn alpha() -> Self; // generator of order A multiplicative subgroup
     const A: usize; // order of alpha()
 
@@ -39,19 +40,20 @@ pub trait OleField: PrimeField {
     // Inverse of fft3
     fn fft3_inverse(ys: &mut [Self], beta: &Self);
 
-    // fn to_bytes(&self) -> u8;
+    fn to_block(self) -> Block;
 }
 
+
 impl OleField for Fp {
-    const A: usize = 1024;
-    const B: usize = 19683;
+    const A: usize = 256usize; //2usize.pow(8);
+    const B: usize = 2187; //3usize.pow(7);
 
     fn alpha() -> Self {
-        Fp(FpRepr([0xc06ef38a81bc942a, 0x0a90ee143aa2da39]))
+        Fp(FpRepr([0xc06ef38a81bc942a, 0x0a90ee143aa2da39])).pow([4])
     }
 
     fn beta() -> Self {
-        Fp(FpRepr([0x7eaba55f322cb079, 0x5bdbc004d5e45ace]))
+        Fp(FpRepr([0x7eaba55f322cb079, 0x5bdbc004d5e45ace])).pow([9])
     }
 
     fn fft2(coeffs: &mut [Self], alpha: &Self) {
@@ -70,5 +72,40 @@ impl OleField for Fp {
         fft::fft3_inverse(ys, beta);
     }
 
-    // fn to_bytes(&self) -> Vec<u8>
+    fn to_block(self) -> Block {
+        unsafe { std::mem::transmute((self.0).0) }
+    }
+}
+
+impl From<Block> for Fp {
+    #[inline]
+    fn from(m: Block) -> Fp {
+        unsafe { Fp(FpRepr(*(&m as *const _ as *const [u64; 2]))) }
+    }
+}
+
+// impl From<Fp> for Block {
+//     #[inline]
+//     fn from(Fp(FpRepr(data)): Fp) -> Block {
+//         unsafe { std::mem::transmute(data) }
+//     }
+// }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use rand::thread_rng;
+
+    #[test]
+    fn test_Fp_block_conversion() {
+        let mut rng = thread_rng();
+        for _ in 0..1000 {
+            let v = Fp::random(&mut rng);
+            let v_ = v.clone();
+            let block: Block = v.to_block();
+            let v_from_block: Fp = block.into();
+
+            assert_eq!(v_, v_from_block);
+        }
+    }
 }
