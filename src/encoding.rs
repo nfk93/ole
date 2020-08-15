@@ -76,29 +76,8 @@ mod tests {
         }
     }
 
-    // #[test]
-    // fn test_encode_decode() {
-    //     let mut rng = rand::thread_rng();
-    //     let points: Vec<Fp> = (0..(Fp::A/2)-1).map(|_| Fp::random(&mut rng)).collect();
-    //
-    //     let (mut encoded, poly, pos) = encode_reed_solomon(&points, &mut rng);
-    //     for (i, p) in points.iter().enumerate() {
-    //         assert_eq!(*p, poly::horner(&poly, &Fp::alpha().pow([(2*i) as u64])));
-    //     }
-    //     assert!(encoded.len() == Fp::B);
-    //     assert!(poly.len() == Fp::A/2);
-    //     assert!(pos.len() == Fp::A);
-    //
-    //     let mut decoded_poly = decode_reed_solomon(&mut encoded, &pos);
-    //     Fp::fft2(&mut decoded_poly, &Fp::alpha().pow([2]));
-    //
-    //     for (idx, p) in points.iter().enumerate() {
-    //         assert_eq!(*p, decoded_poly[idx*2]);
-    //     }
-    // }
-
     #[test]
-    fn test_encode_decode2() {
+    fn test_encode_decode() {
         let mut rng = rand::thread_rng();
         let points: Vec<Fp> = (0..(Fp::A/2)-1).map(|_| Fp::random(&mut rng)).collect();
 
@@ -110,47 +89,62 @@ mod tests {
         assert!(poly.len() == Fp::A/2);
         assert!(pos.len() == Fp::A);
 
+        let mut decoded_poly = decode_reed_solomon(&mut encoded, &pos);
+        println!("len decoded: {}", decoded_poly.len());
+        Fp::fft2(&mut decoded_poly, &Fp::alpha().pow([2]));
+
+        for (idx, p) in points.iter().enumerate() {
+            assert_eq!(*p, decoded_poly[idx]);
+        }
+    }
+
+    #[test]
+    fn test_encode_decode_linear_operations() {
+        let mut rng = rand::thread_rng();
+        let points: Vec<Fp> = (0..Fp::A/2).map(|_| Fp::random(&mut rng)).collect();
+
+        let (mut encoded, poly, pos) = encode_reed_solomon(&points, &mut rng);
+
         let mut a: Vec<Fp> = (0..Fp::A/2).map(|_| Fp::random(&mut rng)).collect();
         let a_copy = a.to_vec();
         Fp::fft2_inverse(&mut a, &Fp::alpha().pow([2]));
-        let a_poly = a.to_vec();
+
+        let b_copy: Vec<Fp> = (0..Fp::A/2).map(|_| Fp::random(&mut rng)).collect();
+        let mut b = pad_every_other(&b_copy, &mut rng);
+        Fp::fft2_inverse(&mut b, &Fp::alpha());
+
+        for i in 0..Fp::A/2 {
+            assert_eq!(a_copy[i], poly::horner(&a, &Fp::alpha().pow([(2*i) as u64])));
+            assert_eq!(b_copy[i], poly::horner(&b, &Fp::alpha().pow([(2*i) as u64])));
+        }
+
         a.resize_with(Fp::B, Fp::zero);
         Fp::fft3(&mut a, &Fp::beta());
-
-        let mut b: Vec<Fp> = (0..Fp::A).map(|_| Fp::random(&mut rng)).collect();
-        let b_copy = b.to_vec();
-        Fp::fft2_inverse(&mut b, &Fp::alpha());
-        let b_poly = b.to_vec();
         b.resize_with(Fp::B, Fp::zero);
         Fp::fft3(&mut b, &Fp::beta());
 
+        // Modify the encoding as in the protocol
         let mut j = 0;
         for (idx, x) in encoded.iter_mut().enumerate() {
             x.mul_assign(&a[idx]);
+            x.add_assign(&b[idx]);
             if j < pos.len() && idx != pos[j] {
                 x.add_assign(&Fp::random(&mut rng));
             } else {
                 j += 1;
             }
         }
-        poly::poly_add(&mut encoded, &b);
 
         let mut decoded_poly = decode_reed_solomon(&mut encoded, &pos);
-        let decoded_copy = decoded_poly.to_vec();
+        // let decoded_copy = decoded_poly.to_vec();
+        println!("len decoded: {}", decoded_poly.len());
         Fp::fft2(&mut decoded_poly, &Fp::alpha());
 
         for (idx, p) in points.iter().enumerate() {
             let mut expected = *p;
             expected.mul_assign(&a_copy[idx]);
-            expected.add_assign(&b_copy[idx*2]);
-            assert_eq!(expected, decoded_poly[idx*2]);
+            expected.add_assign(&b_copy[idx]);
+            assert_eq!(expected, decoded_poly[2*idx]);
         }
-
-        let z = Fp::random(&mut rng);
-        let mut test = poly::horner(&poly, &z);
-        test.mul_assign(&poly::horner(&a_poly, &z));
-        test.add_assign(&poly::horner(&b_poly, &z));
-        let test2 = poly::horner(&decoded_copy, &z);
-        assert_eq!(test, test2);
     }
 }

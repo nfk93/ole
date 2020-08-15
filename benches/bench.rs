@@ -7,10 +7,16 @@ use ole::fft::{
     digit_reverse_swap, fft2, fft2_in_place, fft2_inverse, fft3, fft3_in_place, fft3_inverse,
 };
 use ole::field::{Fp, OleField};
+use ole::ole::{OleSender, OleReceiver, Sender, Receiver};
 use ole::poly::{euclid_division, lagrangian_interpolation, poly_from_roots};
 use ole::shamir::{reconstruct, share};
 use rand;
 use rand::seq::IteratorRandom;
+use std::{
+    io::{BufReader, BufWriter},
+    os::unix::net::UnixStream,
+};
+use scuttlebutt::{Channel, channel::AbstractChannel};
 
 pub fn bench_fft2_in_place(c: &mut Criterion) {
     let mut rng = rand::thread_rng();
@@ -95,7 +101,7 @@ pub fn bench_digit_reverse_swap(c: &mut Criterion) {
 pub fn bench_poly_from_roots(c: &mut Criterion) {
     let mut rng = rand::thread_rng();
 
-    let n = 2usize.pow(11 as u32);
+    let n = 10000;
     let mut data: Vec<Fp> = (0..n).map(|_| Fp::random(&mut rng)).collect();
     c.bench_function(&format!("poly_from_roots1, size {}", n), move |b| {
         b.iter(|| poly_from_roots(&mut data))
@@ -116,23 +122,23 @@ pub fn bench_euclid_division(c: &mut Criterion) {
     let mut a: Vec<Fp> = (0..na).map(|_| Fp::random(&mut rng)).collect();
     let mut b: Vec<Fp> = (0..nb).map(|_| Fp::random(&mut rng)).collect();
     c.bench_function(
-        &format!("euclid_division1, size a = {}, size b = {}", na, nb),
+        &format!("euclid_division, size a = {}, size b = {}", na, nb),
         move |b_| b_.iter(|| euclid_division(&mut a, &b)),
     );
 
-    let na = 3usize.pow(9 as u32);
-    let n = 3usize.pow(9) - 2usize.pow(11);
+    let na = Fp::B;
+    let n = Fp::A;
     let mut a: Vec<Fp> = (0..na).map(|_| Fp::random(&mut rng)).collect();
     let mut b: Vec<Fp> = (0..nb).map(|_| Fp::random(&mut rng)).collect();
     c.bench_function(
-        &format!("euclid_division2, size a = {}, size b = {}", na, nb),
+        &format!("euclid_division, size a = {}, size b = {}", na, nb),
         move |b_| b_.iter(|| euclid_division(&mut a, &b)),
     );
 }
 
 pub fn bench_lagrange(c: &mut Criterion) {
     let mut rng = rand::thread_rng();
-    let n = 3u64.pow(7) - 2u64.pow(8);
+    let n = Fp::B-Fp::A;
     let ys: Vec<Fp> = (0..n).map(|_| Fp::random(&mut rng)).collect();
     let xs: Vec<Fp> = (0..n).map(|_| Fp::random(&mut rng)).collect();
 
@@ -145,33 +151,86 @@ pub fn bench_lagrange(c: &mut Criterion) {
 pub fn bench_share(c: &mut Criterion) {
     let mut rng = rand::thread_rng();
     let secret = Fp::random(&mut rng);
-    let n = 3u64.pow(7);
-    let rho = n - 2u64.pow(8);
-    let omega = Fp::beta().pow([9]);
+    let n = Fp::B;
+    let rho = Fp::B - Fp::A;
+    let omega = Fp::beta();
 
     c.bench_function(&format!("share, n = {}, rho = {}", n, rho), move |b_| {
-        b_.iter(|| share(&secret, n, rho, &omega))
+        b_.iter(|| share(&secret, n as u64, rho as u64, &omega))
     });
 }
 
 pub fn bench_reconstruct(c: &mut Criterion) {
     let mut rng = rand::thread_rng();
     let secret = Fp::random(&mut rng);
-    let n = 3u64.pow(7);
-    let rho = n - 2u64.pow(8);
-    let omega = Fp::beta().pow([9]);
+    let n = Fp::B;
+    let rho = Fp::B - Fp::A;
+    let omega = Fp::beta();
 
-    let shares = share(&secret, n, rho, &omega);
-    let mut indices: Vec<u64> = (0..n).choose_multiple(&mut rng, rho as usize);
+    let shares = share(&secret, n as u64, rho as u64, &omega);
+    let mut indices: Vec<usize> = (0..n).choose_multiple(&mut rng, rho);
     indices.sort();
-    let mut myshares: Vec<Fp> = indices.iter().map(|i| shares[*i as usize]).collect();
+    let mut myshares: Vec<Fp> = indices.iter().map(|i| shares[*i]).collect();
 
     c.bench_function(
         &format!("reconstruct, n = {}, rho = {}", n, rho),
-        move |b_| b_.iter(|| reconstruct(&indices, &myshares, n, rho, &omega)),
+        move |b_| b_.iter(|| reconstruct(&indices, &myshares, n as u64, rho as u64, &omega)),
     );
 }
 
+
+pub fn bench_ole_send_receive(c: &mut Criterion) {
+    let mut rng = rand::thread_rng();
+    let n = 10;
+    let x: Vec<Fp> = (0..Fp::A/2).map(|i| Fp::random(&mut rng)).collect();
+    c.bench_function(&format!("ole128 * {}", n), move |b_| b_.iter(|| {
+            let (sender, receiver) = UnixStream::pair().unwrap();
+            let a: Vec<Fp> = (0..Fp::A/2).map(|i| Fp::random(&mut rng)).collect();
+            let b: Vec<Fp> = (0..Fp::A/2).map(|i| Fp::random(&mut rng)).collect();
+            let handle = std::thread::spawn(move || {
+                let mut rng = rand::thread_rng();
+                let reader = BufReader::new(sender.try_clone().unwrap());
+                let writer = BufWriter::new(sender);
+                let mut sender_channel = Channel::new(reader, writer);
+                let mut olesender = OleSender::init(&mut sender_channel, &mut rng).unwrap();
+                for _ in 0..n {
+                    olesender.input(&a, &b, &mut sender_channel, &mut rng).unwrap();
+                }
+            });
+            let mut rng = rand::thread_rng();
+            let reader = BufReader::new(receiver.try_clone().unwrap());
+            let writer = BufWriter::new(receiver);
+            let mut receiver_channel = Channel::new(reader, writer);
+            let mut olereceiver = OleReceiver::init(&mut receiver_channel, &mut rng).unwrap();
+            for _ in 0..n {
+                let result = olereceiver.input(&x, &mut receiver_channel, &mut rng).unwrap();
+            }
+            handle.join();
+        }),
+    );
+}
+
+pub fn bench_ole_init(c: &mut Criterion) {
+    c.bench_function("ole init", move |b_| b_.iter(|| {
+            let (sender, receiver) = UnixStream::pair().unwrap();
+            let handle = std::thread::spawn(move || {
+                let mut rng = rand::thread_rng();
+                let reader = BufReader::new(sender.try_clone().unwrap());
+                let writer = BufWriter::new(sender);
+                let mut sender_channel = Channel::new(reader, writer);
+                let olesender = OleSender::init(&mut sender_channel, &mut rng).unwrap();
+            });
+            let mut rng = rand::thread_rng();
+            let reader = BufReader::new(receiver.try_clone().unwrap());
+            let writer = BufWriter::new(receiver);
+            let mut receiver_channel = Channel::new(reader, writer);
+            let mut olereceiver = OleReceiver::init(&mut receiver_channel, &mut rng).unwrap();
+            handle.join();
+        }),
+    );
+}
+
+criterion_group!(bench_ole, bench_ole_send_receive, bench_ole_init);
 criterion_group!(bench_ss, bench_share, bench_reconstruct);
 criterion_group!(
     bench_poly,
@@ -193,9 +252,10 @@ criterion_group!(
 );
 criterion_group!(bench_digit_reverse, bench_digit_reverse_swap);
 criterion_main!(
-    bench_fft2,
-    bench_fft3,
-    bench_digit_reverse,
+    // bench_fft2,
+    // bench_fft3,
+    // bench_digit_reverse,
     bench_poly,
-    bench_ss
+    bench_ss,
+    bench_ole
 );

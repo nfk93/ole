@@ -51,7 +51,7 @@ impl Sender for OleSender {
     ) -> Result<(), OleError> {
         assert_eq!(a.len(), b.len());
 
-        let mask: Vec<F> = (0..F::B).map(|_| F::random(rng)).collect();
+        let mask: Vec<F> = (0..F::B).map(|i| F::random(rng)).collect();
         let secret = F::random(rng);
         let shares: Vec<F> = shamir::share(&secret, F::B as u64, (F::B - F::A) as u64, &F::beta());
 
@@ -62,16 +62,9 @@ impl Sender for OleSender {
         channel.write_bytes(com.as_ref())?;
         channel.flush()?;
 
-        let shares_blocks: Vec<Block> = shares.iter().map(|share| share.to_block()).collect();
-        let mask_blocks: Vec<Block> = mask.iter().map(|mask_elem| mask_elem.to_block()).collect();
-        let ot_input = shares_blocks
-            .into_iter()
-            .zip(mask_blocks.into_iter())
-            .collect::<Vec<(Block, Block)>>();
-        // let ot_input: Vec<(Block, Block)> = shares.into_iter().zip(mask.into_iter()).map(|(share, mask): (&F, &F)| {
-        //     (share.to_block(), mask.to_block())
-        // }).collect();
-        // let ot_input: Vec<(Block, Block)> = shares.iter().zip(&mask).collect();
+        let shares_blocks = shares.iter().map(|share| share.to_block());
+        let mask_blocks = mask.iter().map(|mask_elem| mask_elem.to_block());
+        let ot_input: Vec<(Block, Block)> = shares_blocks.zip(mask_blocks).collect();
         self.ot.send(channel, ot_input.as_slice(), rng)?;
 
         let v_blocks = channel.read_blocks(F::B)?;
@@ -82,20 +75,13 @@ impl Sender for OleSender {
         let mut a_poly = a.to_vec();
         a_poly.resize_with(F::A/2, || F::random(rng));
         F::fft2_inverse(&mut a_poly, &alpha2);
-        // a_poly.resize_with(F::B, F::zero);
-
-        let mut b_poly = encoding::pad_every_other(&b, rng);
-        b_poly.resize_with(F::A, || F::random(rng));
-        for (idx, b_) in b.iter().enumerate() {
-            assert_eq!(b_poly[2*idx], *b_);
-        }
-        F::fft2_inverse(&mut b_poly, &F::alpha());
-        // b_poly.resize_with(F::B, F::zero);
-
         let mut a_vals = a_poly.to_vec();
         a_vals.resize_with(F::B, F::zero);
         F::fft3(&mut a_vals, &F::beta());
 
+        let mut b_poly = encoding::pad_every_other(&b, rng);
+        b_poly.resize_with(F::A, || F::random(rng));
+        F::fft2_inverse(&mut b_poly, &F::alpha());
         let mut b_vals = b_poly.to_vec();
         b_vals.resize_with(F::B, F::zero);
         F::fft3(&mut b_vals, &F::beta());
@@ -121,7 +107,13 @@ impl Sender for OleSender {
         channel.write_block(&zs.to_block())?;
         channel.flush()?;
 
-
+        let mut ax_b = poly::horner(&a_poly, &zs);
+        let b_zs = poly::horner(&b_poly, &zs);
+        let x_zs: F = (channel.read_block()?).into();
+        let y_zs: F = (channel.read_block()?).into();
+        ax_b.mul_assign(&x_zs);
+        ax_b.add_assign(&b_zs);
+        assert_eq!(ax_b, y_zs);
 
         return Ok(())
     }
@@ -167,24 +159,21 @@ impl Receiver for OleReceiver {
         let mut com = [0u8; 32];
         channel.read_bytes(&mut com);
 
-        let t = F::A/2;
-        assert!(x.len() <= t);
         let (mut encoded, x_poly, indices) = encoding::encode_reed_solomon(&x, rng);
 
         let mut share_indices = vec!();
         let mut j = 0;
         for i in 0..F::B {
-            if (j < t as usize) && (i == indices[j]) {
+            if (j < F::A as usize) && (i == indices[j]) {
                 j += 1;
             } else {
                 share_indices.push(i);
             }
         }
-        assert_eq!(share_indices.len(),  F::B - t);
 
         let mut j = 0;
         let choices: Vec<bool> = (0..F::B).map(|i| {
-            if (j < t as usize) && (i == indices[j]) {
+            if (j < F::A as usize) && (i == indices[j]) {
                 j+=1;
                 true
             } else {
@@ -195,34 +184,13 @@ impl Receiver for OleReceiver {
 
         let mask: Vec<F> = indices.iter().map(|i| vals[*i as usize].into()).collect();
         let mut shares: Vec<F> = share_indices.iter().map(|i| vals[*i as usize].into()).collect();
-        let secret = shamir::reconstruct(&share_indices, &shares, F::B as u64, (F::B - t) as u64, &F::beta());
 
         // check that commitment is correct
+        let secret = shamir::reconstruct(&share_indices, &shares, F::B as u64, (F::B - F::A) as u64, &F::beta());
         let mut hasher = Sha256::new();
         secret.into_repr().write_be(&mut hasher);
         let com_check = hasher.finalize();
         assert_eq!(com_check.as_slice(), com);
-
-        // // Make RS encoding of xs
-        // let mut alpha2 = F::alpha();
-        // alpha2.square();
-        // let mut xs = x.to_vec();
-        // xs.resize_with(F::A / 2, || F::random(rng));
-        // // perform convolution to evaluate in F::B points
-        // F::fft2_inverse(&mut xs, &alpha2);
-        // let x_poly = xs.to_vec(); // save the polynomial X
-        // xs.resize_with(F::B, F::zero);
-        // F::fft3(&mut xs, &F::beta());
-        // let mut j = 0;
-        // for (i, x) in xs.iter_mut().enumerate() {
-        //     if j < t && i == indices[j] {
-        //         j += 1;
-        //         continue;
-        //     } else {
-        //         *x = F::random(rng);
-        //     }
-        // }
-        // Send to Sender
 
         for v in encoded.iter() {
             channel.write_block(&v.to_block())?;
@@ -231,10 +199,12 @@ impl Receiver for OleReceiver {
 
         let mut w_blocks = channel.read_blocks(F::B)?;
         let mut ws: Vec<F> = w_blocks.iter().map(|w| (*w).into()).collect();
-        for (i, ti) in indices.iter().zip(mask) {
+        for (i, ti) in indices.iter().zip(&mask) {
             ws[*i].sub_assign(&ti);
         }
-        let y_poly = encoding::decode_reed_solomon(&mut ws, &indices);
+
+        let mut y_poly = encoding::decode_reed_solomon(&mut ws, &indices);
+        assert!(y_poly.len() == F::A);
 
         let zr = F::random(rng);
         channel.write_block(&zr.to_block())?;
@@ -250,14 +220,22 @@ impl Receiver for OleReceiver {
         x_zr.add_assign(&b_zr);
         assert_eq!(x_zr, y_zr);
 
-        return Ok(vec!(F::one()));
+        let x_zs = poly::horner(&x_poly, &zs);
+        let y_zs = poly::horner(&y_poly, &zs);
+        channel.write_block(&x_zs.to_block())?;
+        channel.write_block(&y_zs.to_block())?;
+        channel.flush()?;
+
+        F::fft2(&mut y_poly, &F::alpha());
+        let result = y_poly.into_iter().step_by(2).collect::<Vec<F>>();
+        // let result: Vec<F> = (0..F::A/2).map(|i| poly::horner(&y_poly, &F::alpha().pow([(2*i) as u64]))).collect();
+        return Ok(result);
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    // use std::io::{BufReader, BufWriter};
     use rand;
     use std::{
         fmt::Display,
@@ -272,24 +250,40 @@ mod tests {
     fn test_ole() {
         let mut rng = rand::thread_rng();
         let (sender, receiver) = UnixStream::pair().unwrap();
+        let b: Vec<Fp> = (0..Fp::A/2).map(|i| Fp::random(&mut rng)).collect();
+        let a: Vec<Fp> = (0..Fp::A/2).map(|i| Fp::random(&mut rng)).collect();
+        // let a: Vec<Fp> = (0..Fp::A/2).map(|i| Fp::one()).collect();
+        // let b: Vec<Fp> = (0..Fp::A/2).map(|i| Fp::one()).collect();
 
+        let a_copy = a.to_vec();
+        let b_copy = b.to_vec();
         let handle = std::thread::spawn(move || {
             let mut rng = rand::thread_rng();
-            let reader = BufReader::new(receiver.try_clone().unwrap());
-            let writer = BufWriter::new(receiver);
+            let reader = BufReader::new(sender.try_clone().unwrap());
+            let writer = BufWriter::new(sender);
             let mut channel = Channel::new(reader, writer);
-            let mut olereceiver = OleReceiver::init(&mut channel, &mut rng).unwrap();
-            let v = olereceiver.input(&[Fp::one()], &mut channel, &mut rng).unwrap();
-            println!("result: {:?}", v)
+
+            let mut olesender = OleSender::init(&mut channel, &mut rng).unwrap();
+            olesender.input(&a_copy, &b_copy, &mut channel, &mut rng).unwrap();
         });
 
-        let reader = BufReader::new(sender.try_clone().unwrap());
-        let writer = BufWriter::new(sender);
+        let reader = BufReader::new(receiver.try_clone().unwrap());
+        let writer = BufWriter::new(receiver);
         let mut channel = Channel::new(reader, writer);
-
-        let mut olesender = OleSender::init(&mut channel, &mut rng).unwrap();
-        olesender.input(&[Fp::one()], &[Fp::one()], &mut channel, &mut rng).unwrap();
+        let mut olereceiver = OleReceiver::init(&mut channel, &mut rng).unwrap();
+        // let x: Vec<Fp> = (0..Fp::A/2).map(|i| Fp::random(&mut rng)).collect();
+        let x: Vec<Fp> = (0..Fp::A/2).map(|i| Fp::one()).collect();
+        let result = olereceiver.input(&x, &mut channel, &mut rng).unwrap();
         handle.join();
+
+        for i in 0..Fp::A/2 {
+            let mut expected = x[i];
+            expected.mul_assign(&a[i]);
+            expected.add_assign(&b[i]);
+            println!("expected:\n{:?} * {:?} + {:?} = {:?}", a[i], x[i], b[i], expected);
+            println!("received: {:?}", result[i]);
+            assert_eq!(result[i], expected);
+        }
     }
 
     #[test]
@@ -322,9 +316,11 @@ mod tests {
     #[test]
     // test copied from ocelot's test suite
     fn test_ot() {
+        let mut rng = rand::thread_rng();
+
         let ninputs = 128;
-        let m0s: Vec<Block> = (0..ninputs).map(|_| rand::random::<Block>()).collect();
-        let m1s: Vec<Block> = (0..ninputs).map(|_| rand::random::<Block>()).collect();
+        let m0s: Vec<Fp> = (0..ninputs).map(|_| Fp::random(&mut rng)).collect();
+        let m1s: Vec<Fp> = (0..ninputs).map(|_| Fp::random(&mut rng)).collect();
         let bs: Vec<bool> = (0..ninputs).map(|_| rand::random::<bool>()).collect();
         let m0s_ = m0s.clone();
         let m1s_ = m1s.clone();
@@ -339,16 +335,17 @@ mod tests {
             let ms = m0s
                 .into_iter()
                 .zip(m1s.into_iter())
+                .map(|(m0, m1)| (m0.to_block(), m1.to_block()))
                 .collect::<Vec<(Block, Block)>>();
             ot.send(&mut channel, &ms, &mut rng).unwrap();
         });
 
-        let mut rng = rand::thread_rng();
         let reader = BufReader::new(receiver.try_clone().unwrap());
         let writer = BufWriter::new(receiver);
         let mut channel = Channel::new(reader, writer);
         let mut ot = KosReceiver::init(&mut channel, &mut rng).unwrap();
-        let result = ot.receive(&mut channel, &bs, &mut rng).unwrap();
+        let result_ = ot.receive(&mut channel, &bs, &mut rng).unwrap();
+        let result: Vec<Fp> = result_.iter().map(|v| (*v).into()).collect();
         handle.join().unwrap();
         for j in 0..ninputs {
             assert_eq!(result[j], if bs[j] { m1s_[j] } else { m0s_[j] });
