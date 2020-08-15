@@ -1,10 +1,12 @@
 use ocelot::Error as OcelotError;
 use std::error;
 use std::fmt;
+use std::io;
 
 #[derive(Debug)]
 pub enum OleError {
     TODOError,
+    IOError(std::io::Error),
     OTError(OcelotError),
 }
 
@@ -24,5 +26,11 @@ impl error::Error for OleError {
 impl From<OcelotError> for OleError {
     fn from(e: OcelotError) -> OleError {
         OleError::OTError(e)
+    }
+}
+
+impl From<std::io::Error> for OleError {
+    fn from(e: std::io::Error) -> OleError {
+        OleError::IOError(e)
     }
 }

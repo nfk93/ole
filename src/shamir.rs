@@ -11,12 +11,12 @@ pub fn share<F: OleField>(secret: &F, n: u64, rho: u64, omega: &F) -> Vec<F> {
     return coeffs;
 }
 
-pub fn reconstruct<F: OleField>(indices: &[u64], shares: &[F], n: u64, rho: u64, omega: &F) -> F {
+pub fn reconstruct<F: OleField>(indices: &[usize], shares: &[F], n: u64, rho: u64, omega: &F) -> F {
     assert_eq!(indices.len(), shares.len());
     let mut i = 0usize;
     let mut points_with_error: Vec<F> = (0..n)
         .map(|j| {
-            if (i < rho as usize) && (j == indices[i]) {
+            if (i < rho as usize) && (j == (indices[i] as u64)) {
                 i += 1;
                 shares[i - 1]
             } else {
@@ -44,12 +44,12 @@ mod tests {
         let secret = Fp::random(&mut rng);
         let n = 3u64.pow(7);
         let rho = n - 2u64.pow(8);
-        let omega = Fp::beta().pow([9]);
+        let omega = Fp::beta();
 
         let shares = share(&secret, n, rho, &omega);
-        let mut indices: Vec<u64> = (0..n).choose_multiple(&mut rng, rho as usize);
+        let mut indices: Vec<usize> = (0..(n as usize)).choose_multiple(&mut rng, rho as usize);
         indices.sort();
-        let mut myshares: Vec<Fp> = indices.iter().map(|i| shares[*i as usize]).collect();
+        let mut myshares: Vec<Fp> = indices.iter().map(|i| shares[*i]).collect();
         let reconstructed = reconstruct(&indices, &myshares, n, rho, &omega);
 
         // println!("secret: {:?}\nreconstr: {:?}", secret, reconstructed);

@@ -56,7 +56,7 @@ fn naive_poly_mult<F: Field>(a: &[F], b: &[F]) -> Vec<F> {
 
 // adds polynomial b to polynomial a.
 // precondition deg(a) > deg(b)
-fn poly_add<F: Field>(a: &mut [F], b: &[F]) {
+pub fn poly_add<F: Field>(a: &mut [F], b: &[F]) {
     for (idx, coeff) in b.iter().enumerate() {
         a[idx].add_assign(coeff);
     }

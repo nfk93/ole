@@ -233,9 +233,9 @@ mod tests {
     #[test]
     fn test_fft2() {
         let mut rng = rand::thread_rng();
-        let coeffs: Vec<Fp> = (0..2048).map(|_| Fp::random(&mut rng)).collect();
+        let coeffs: Vec<Fp> = (0..Fp::A).map(|_| Fp::random(&mut rng)).collect();
         let points = fft2(&coeffs, &Fp::alpha());
-        for i in 0..1024 {
+        for i in 0..Fp::A {
             assert_eq!(points[i], horner(&coeffs, &Fp::alpha().pow(&[i as u64])));
         }
     }
@@ -243,10 +243,10 @@ mod tests {
     #[test]
     fn test_fft2_in_place() {
         let mut rng = rand::thread_rng();
-        let coeffs: Vec<Fp> = (0..1024).map(|_| Fp::random(&mut rng)).collect();
+        let coeffs: Vec<Fp> = (0..Fp::A).map(|_| Fp::random(&mut rng)).collect();
         let mut points = coeffs.to_vec();
         fft2_in_place(&mut points, &Fp::alpha());
-        for i in 0..1024 {
+        for i in 0..Fp::A {
             let actual = points[i];
             let expected = horner(&coeffs, &Fp::alpha().pow(&[i as u64]));
             assert!(
@@ -260,10 +260,10 @@ mod tests {
             );
         }
 
-        let coeffs: Vec<Fp> = (0..512).map(|_| Fp::random(&mut rng)).collect();
+        let coeffs: Vec<Fp> = (0..Fp::A/2).map(|_| Fp::random(&mut rng)).collect();
         let mut points = coeffs.to_vec();
         fft2_in_place(&mut points, &Fp::alpha().pow([2u64]));
-        for i in 0..512 {
+        for i in 0..Fp::A/2 {
             let actual = points[i];
             let expected = horner(&coeffs, &Fp::alpha().pow(&[2 * i as u64]));
             assert!(
@@ -281,7 +281,7 @@ mod tests {
     #[test]
     fn test_fft2_inverse() {
         let mut rng = rand::thread_rng();
-        let points: Vec<Fp> = (0..1024).map(|_| Fp::random(&mut rng)).collect();
+        let points: Vec<Fp> = (0..Fp::A).map(|_| Fp::random(&mut rng)).collect();
         let mut coeffs = points.to_vec();
         fft2_inverse(&mut coeffs, &Fp::alpha());
         points.iter().enumerate().for_each(|(idx, point)| {
