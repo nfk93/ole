@@ -108,7 +108,6 @@ pub fn lagrangian_interpolation<F: Field>(xs: &[F], ys: &[F]) -> F {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::fft::fft2;
     use crate::field::{Fp, FpRepr, OleField};
     use ff::PrimeField;
     use rand;

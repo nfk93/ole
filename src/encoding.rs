@@ -1,14 +1,12 @@
-use crate::fft::{fft2_in_place, fft2_inverse, fft3_in_place, fft3_inverse};
-use crate::field::{Fp, OleField};
+use crate::field::OleField;
 use crate::poly::{euclid_division, poly_from_roots};
-use ff::Field;
 use rand::{seq::IteratorRandom, CryptoRng, Rng};
 
 pub fn decode_reed_solomon<F: OleField>(points: &mut [F], pos: &[usize]) -> Vec<F> {
     F::fft3_inverse(points, &F::beta());
     let roots: Vec<F> = pos.iter().map(|idx| F::beta().pow([*idx as u64])).collect();
     let b = poly_from_roots(&roots);
-    let (_, mut r) = euclid_division(points, &b);
+    let (_, r) = euclid_division(points, &b);
     return r;
 }
 
@@ -65,7 +63,9 @@ pub fn pick_indices<Crng: CryptoRng + Rng>(l: usize, n: usize, rng: &mut Crng) -
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::field::Fp;
     use crate::poly;
+    use ff::Field;
 
     #[test]
     fn test_pad_every_other() {
@@ -105,7 +105,7 @@ mod tests {
         let mut rng = rand::thread_rng();
         let points: Vec<Fp> = (0..Fp::A / 2).map(|_| Fp::random(&mut rng)).collect();
 
-        let (mut encoded, poly, pos) = encode_reed_solomon(&points, &mut rng);
+        let (mut encoded, _poly, pos) = encode_reed_solomon(&points, &mut rng);
 
         let mut a: Vec<Fp> = (0..Fp::A / 2).map(|_| Fp::random(&mut rng)).collect();
         let a_copy = a.to_vec();

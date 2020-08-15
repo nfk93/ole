@@ -1,7 +1,6 @@
 use ocelot::Error as OcelotError;
 use std::error;
 use std::fmt;
-use std::io;
 
 #[derive(Debug)]
 pub enum OleError {

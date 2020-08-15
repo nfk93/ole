@@ -27,7 +27,7 @@ pub fn reconstruct<F: OleField>(indices: &[usize], shares: &[F], n: u64, rho: u6
     let roots: Vec<F> = indices.iter().map(|idx| omega.pow([*idx as u64])).collect();
     F::fft3_inverse(&mut points_with_error, omega);
     let b = poly_from_roots(&roots);
-    let (_, mut r) = euclid_division(&points_with_error, &b);
+    let (_, r) = euclid_division(&points_with_error, &b);
     return r[0];
 }
 
@@ -49,7 +49,7 @@ mod tests {
         let shares = share(&secret, n, rho, &omega);
         let mut indices: Vec<usize> = (0..(n as usize)).choose_multiple(&mut rng, rho as usize);
         indices.sort();
-        let mut myshares: Vec<Fp> = indices.iter().map(|i| shares[*i]).collect();
+        let myshares: Vec<Fp> = indices.iter().map(|i| shares[*i]).collect();
         let reconstructed = reconstruct(&indices, &myshares, n, rho, &omega);
 
         // println!("secret: {:?}\nreconstr: {:?}", secret, reconstructed);

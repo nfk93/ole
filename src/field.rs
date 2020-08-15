@@ -13,7 +13,7 @@ pub struct Fp(FpRepr);
 
 // A field with special properties that enable interpolation and evaluation at a set of
 // predetermined alphas and betas in the field using FFT.
-pub trait OleField: PrimeField + From<Block> {
+pub trait OleField: PrimeField + Field + From<Block> {
     fn alpha() -> Self; // generator of order A multiplicative subgroup
     const A: usize; // order of alpha()
 
@@ -96,7 +96,7 @@ mod tests {
     use rand::thread_rng;
 
     #[test]
-    fn test_Fp_block_conversion() {
+    fn test_fp_block_conversion() {
         let mut rng = thread_rng();
         for _ in 0..1000 {
             let v = Fp::random(&mut rng);
