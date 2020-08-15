@@ -260,10 +260,10 @@ mod tests {
             );
         }
 
-        let coeffs: Vec<Fp> = (0..Fp::A/2).map(|_| Fp::random(&mut rng)).collect();
+        let coeffs: Vec<Fp> = (0..Fp::A / 2).map(|_| Fp::random(&mut rng)).collect();
         let mut points = coeffs.to_vec();
         fft2_in_place(&mut points, &Fp::alpha().pow([2u64]));
-        for i in 0..Fp::A/2 {
+        for i in 0..Fp::A / 2 {
             let actual = points[i];
             let expected = horner(&coeffs, &Fp::alpha().pow(&[2 * i as u64]));
             assert!(

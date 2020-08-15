@@ -1,12 +1,12 @@
+use crate::encoding;
 use crate::error::OleError;
 use crate::field::OleField;
-use crate::shamir;
 use crate::poly;
-use crate::encoding;
+use crate::shamir;
 use ff::{Field, PrimeField, PrimeFieldRepr};
 use ocelot::ot::{KosReceiver, KosSender, Receiver as OTReceiver, Sender as OTSender};
-use rand::{CryptoRng, Rng, seq::IteratorRandom};
-use scuttlebutt::{Block, Channel, channel::AbstractChannel};
+use rand::{seq::IteratorRandom, CryptoRng, Rng};
+use scuttlebutt::{channel::AbstractChannel, Block, Channel};
 use sha2::{Digest, Sha256};
 // use itertools::interleave;
 
@@ -73,7 +73,7 @@ impl Sender for OleSender {
         alpha2.square();
 
         let mut a_poly = a.to_vec();
-        a_poly.resize_with(F::A/2, || F::random(rng));
+        a_poly.resize_with(F::A / 2, || F::random(rng));
         F::fft2_inverse(&mut a_poly, &alpha2);
         let mut a_vals = a_poly.to_vec();
         a_vals.resize_with(F::B, F::zero);
@@ -115,7 +115,7 @@ impl Sender for OleSender {
         ax_b.add_assign(&b_zs);
         assert_eq!(ax_b, y_zs);
 
-        return Ok(())
+        return Ok(());
     }
 }
 
@@ -161,7 +161,7 @@ impl Receiver for OleReceiver {
 
         let (mut encoded, x_poly, indices) = encoding::encode_reed_solomon(&x, rng);
 
-        let mut share_indices = vec!();
+        let mut share_indices = vec![];
         let mut j = 0;
         for i in 0..F::B {
             if (j < F::A as usize) && (i == indices[j]) {
@@ -172,21 +172,32 @@ impl Receiver for OleReceiver {
         }
 
         let mut j = 0;
-        let choices: Vec<bool> = (0..F::B).map(|i| {
-            if (j < F::A as usize) && (i == indices[j]) {
-                j+=1;
-                true
-            } else {
-                false
-            }
-        }).collect();
+        let choices: Vec<bool> = (0..F::B)
+            .map(|i| {
+                if (j < F::A as usize) && (i == indices[j]) {
+                    j += 1;
+                    true
+                } else {
+                    false
+                }
+            })
+            .collect();
         let vals = self.ot.receive(channel, &choices, rng)?;
 
         let mask: Vec<F> = indices.iter().map(|i| vals[*i as usize].into()).collect();
-        let mut shares: Vec<F> = share_indices.iter().map(|i| vals[*i as usize].into()).collect();
+        let mut shares: Vec<F> = share_indices
+            .iter()
+            .map(|i| vals[*i as usize].into())
+            .collect();
 
         // check that commitment is correct
-        let secret = shamir::reconstruct(&share_indices, &shares, F::B as u64, (F::B - F::A) as u64, &F::beta());
+        let secret = shamir::reconstruct(
+            &share_indices,
+            &shares,
+            F::B as u64,
+            (F::B - F::A) as u64,
+            &F::beta(),
+        );
         let mut hasher = Sha256::new();
         secret.into_repr().write_be(&mut hasher);
         let com_check = hasher.finalize();
@@ -236,6 +247,7 @@ impl Receiver for OleReceiver {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::field::Fp;
     use rand;
     use std::{
         fmt::Display,
@@ -244,14 +256,13 @@ mod tests {
         os::unix::net::UnixStream,
         sync::{Arc, Mutex},
     };
-    use crate::field::Fp;
 
     #[test]
     fn test_ole() {
         let mut rng = rand::thread_rng();
         let (sender, receiver) = UnixStream::pair().unwrap();
-        let b: Vec<Fp> = (0..Fp::A/2).map(|i| Fp::random(&mut rng)).collect();
-        let a: Vec<Fp> = (0..Fp::A/2).map(|i| Fp::random(&mut rng)).collect();
+        let b: Vec<Fp> = (0..Fp::A / 2).map(|i| Fp::random(&mut rng)).collect();
+        let a: Vec<Fp> = (0..Fp::A / 2).map(|i| Fp::random(&mut rng)).collect();
         // let a: Vec<Fp> = (0..Fp::A/2).map(|i| Fp::one()).collect();
         // let b: Vec<Fp> = (0..Fp::A/2).map(|i| Fp::one()).collect();
 
@@ -264,7 +275,9 @@ mod tests {
             let mut channel = Channel::new(reader, writer);
 
             let mut olesender = OleSender::init(&mut channel, &mut rng).unwrap();
-            olesender.input(&a_copy, &b_copy, &mut channel, &mut rng).unwrap();
+            olesender
+                .input(&a_copy, &b_copy, &mut channel, &mut rng)
+                .unwrap();
         });
 
         let reader = BufReader::new(receiver.try_clone().unwrap());
@@ -272,15 +285,18 @@ mod tests {
         let mut channel = Channel::new(reader, writer);
         let mut olereceiver = OleReceiver::init(&mut channel, &mut rng).unwrap();
         // let x: Vec<Fp> = (0..Fp::A/2).map(|i| Fp::random(&mut rng)).collect();
-        let x: Vec<Fp> = (0..Fp::A/2).map(|i| Fp::one()).collect();
+        let x: Vec<Fp> = (0..Fp::A / 2).map(|i| Fp::one()).collect();
         let result = olereceiver.input(&x, &mut channel, &mut rng).unwrap();
         handle.join();
 
-        for i in 0..Fp::A/2 {
+        for i in 0..Fp::A / 2 {
             let mut expected = x[i];
             expected.mul_assign(&a[i]);
             expected.add_assign(&b[i]);
-            println!("expected:\n{:?} * {:?} + {:?} = {:?}", a[i], x[i], b[i], expected);
+            println!(
+                "expected:\n{:?} * {:?} + {:?} = {:?}",
+                a[i], x[i], b[i], expected
+            );
             println!("received: {:?}", result[i]);
             assert_eq!(result[i], expected);
         }

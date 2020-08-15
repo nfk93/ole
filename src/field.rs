@@ -43,7 +43,6 @@ pub trait OleField: PrimeField + From<Block> {
     fn to_block(self) -> Block;
 }
 
-
 impl OleField for Fp {
     const A: usize = 256usize; //2usize.pow(8);
     const B: usize = 2187; //3usize.pow(7);
