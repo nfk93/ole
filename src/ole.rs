@@ -67,6 +67,9 @@ impl Sender for OleSender {
         let ot_input: Vec<(Block, Block)> = shares_blocks.zip(mask_blocks).collect();
         self.ot.send(channel, ot_input.as_slice(), rng)?;
 
+        let secret_from_receiver = (channel.read_block()?).into();
+        assert_eq!(secret, secret_from_receiver);
+
         let v_blocks = channel.read_blocks(F::B)?;
 
         let mut alpha2 = F::alpha();
@@ -202,6 +205,8 @@ impl Receiver for OleReceiver {
         secret.into_repr().write_be(&mut hasher)?;
         let com_check = hasher.finalize();
         assert_eq!(com_check.as_slice(), com);
+        channel.write_block(&secret.to_block())?;
+        channel.flush()?;
 
         for v in encoded.iter() {
             channel.write_block(&v.to_block())?;
