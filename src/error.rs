@@ -4,21 +4,30 @@ use std::fmt;
 
 #[derive(Debug)]
 pub enum OleError {
-    TODOError,
+    SenderError(&'static str),
+    ReceiverError(&'static str),
     IOError(std::io::Error),
     OTError(OcelotError),
 }
 
 impl fmt::Display for OleError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "something went wrong")
+        match self {
+            OleError::IOError(e) => write!(f, "{}", e),
+            OleError::SenderError(s) => write!(f, "{}", s),
+            OleError::ReceiverError(s) => write!(f, "{}", s),
+            OleError::OTError(e) => write!(f, "{}", e),
+        }
+
     }
 }
 
 impl error::Error for OleError {
     fn source(&self) -> Option<&(dyn error::Error + 'static)> {
-        // Generic error, underlying cause isn't tracked.
-        None
+        match self {
+            OleError::IOError(e) => Some(e),
+            _ => None,
+        }
     }
 }
 

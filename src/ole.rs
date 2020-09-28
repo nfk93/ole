@@ -1,5 +1,5 @@
 use crate::encoding;
-use crate::error::OleError;
+use crate::error::*;
 use crate::field::OleField;
 use crate::poly;
 use crate::shamir;
@@ -8,7 +8,6 @@ use ocelot::ot::{KosReceiver, KosSender, Receiver as OTReceiver, Sender as OTSen
 use rand::{CryptoRng, Rng};
 use scuttlebutt::{channel::AbstractChannel, Block};
 use sha2::{Digest, Sha256};
-// use itertools::interleave;
 
 pub trait Sender
 where
@@ -49,7 +48,10 @@ impl Sender for OleSender {
         channel: &mut C,
         rng: &mut Crng,
     ) -> Result<(), OleError> {
-        assert_eq!(a.len(), b.len());
+        // TODO: Check that input is on the correct form, not just length
+        if a.len() != b.len() {
+            return Err(OleError::SenderError("Invalid input, a and b must have same length"))
+        }
 
         let mask: Vec<F> = (0..F::B).map(|_| F::random(rng)).collect();
         let secret = F::random(rng);
@@ -67,8 +69,11 @@ impl Sender for OleSender {
         let ot_input: Vec<(Block, Block)> = shares_blocks.zip(mask_blocks).collect();
         self.ot.send(channel, ot_input.as_slice(), rng)?;
 
+        // Check that the receiver can reconstruct the secret
         let secret_from_receiver = (channel.read_block()?).into();
-        assert_eq!(secret, secret_from_receiver);
+        if secret != secret_from_receiver {
+            return Err(OleError::SenderError("Receiver replied with incorrect reconstructed secret"))
+        }
 
         let v_blocks = channel.read_blocks(F::B)?;
 
@@ -116,7 +121,10 @@ impl Sender for OleSender {
         let y_zs: F = (channel.read_block()?).into();
         ax_b.mul_assign(&x_zs);
         ax_b.add_assign(&b_zs);
-        assert_eq!(ax_b, y_zs);
+
+        if ax_b != y_zs {
+            return Err(OleError::SenderError("Receiver replied with (x, y) that doesn't match y == A(zs)*x + B(zs)"))
+        }
 
         return Ok(());
     }
@@ -159,6 +167,7 @@ impl Receiver for OleReceiver {
         channel: &mut C,
         rng: &mut Crng,
     ) -> Result<Vec<F>, OleError> {
+        // TODO: Check that input is on the correct form
         let mut com = [0u8; 32];
         channel.read_bytes(&mut com)?;
 
@@ -204,7 +213,11 @@ impl Receiver for OleReceiver {
         let mut hasher = Sha256::new();
         secret.into_repr().write_be(&mut hasher)?;
         let com_check = hasher.finalize();
-        assert_eq!(com_check.as_slice(), com);
+
+        if com != com_check.as_slice() {
+            return Err(OleError::ReceiverError("Sender's commitment doesn't match reconstructed value"))
+        }
+
         channel.write_block(&secret.to_block())?;
         channel.flush()?;
 
@@ -220,7 +233,10 @@ impl Receiver for OleReceiver {
         }
 
         let mut y_poly = encoding::decode_reed_solomon(&mut ws, &indices);
-        assert!(y_poly.len() == F::A);
+        // if y_poly.len() != F::A {
+        //
+        // }
+        // assert!(y_poly.len() == F::A);
 
         let zr = F::random(rng);
         channel.write_block(&zr.to_block())?;
@@ -234,7 +250,9 @@ impl Receiver for OleReceiver {
         let y_zr = poly::horner(&y_poly, &zr);
         x_zr.mul_assign(&a_zr);
         x_zr.add_assign(&b_zr);
-        assert_eq!(x_zr, y_zr);
+        if x_zr != y_zr {
+            return Err(OleError::ReceiverError("Sender replied to zr with (a, b) that doesn't match Y(zr) == a*X(zr)+b"))
+        }
 
         let x_zs = poly::horner(&x_poly, &zs);
         let y_zs = poly::horner(&y_poly, &zs);
@@ -267,8 +285,6 @@ mod tests {
         let (sender, receiver) = UnixStream::pair().unwrap();
         let b: Vec<Fp> = (0..Fp::A / 2).map(|_| Fp::random(&mut rng)).collect();
         let a: Vec<Fp> = (0..Fp::A / 2).map(|_| Fp::random(&mut rng)).collect();
-        // let a: Vec<Fp> = (0..Fp::A/2).map(|i| Fp::one()).collect();
-        // let b: Vec<Fp> = (0..Fp::A/2).map(|i| Fp::one()).collect();
 
         let a_copy = a.to_vec();
         let b_copy = b.to_vec();
