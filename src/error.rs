@@ -26,6 +26,7 @@ impl error::Error for OleError {
     fn source(&self) -> Option<&(dyn error::Error + 'static)> {
         match self {
             OleError::IOError(e) => Some(e),
+            // OleError::OTError(e) => Some(e), doesn't work, as OcelotError doesn't implement Error
             _ => None,
         }
     }

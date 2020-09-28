@@ -8,6 +8,7 @@ use ocelot::ot::{KosReceiver, KosSender, Receiver as OTReceiver, Sender as OTSen
 use rand::{CryptoRng, Rng};
 use scuttlebutt::{channel::AbstractChannel, Block};
 use sha2::{Digest, Sha256};
+use std::thread;
 
 pub trait Sender
 where
@@ -69,14 +70,6 @@ impl Sender for OleSender {
         let ot_input: Vec<(Block, Block)> = shares_blocks.zip(mask_blocks).collect();
         self.ot.send(channel, ot_input.as_slice(), rng)?;
 
-        // Check that the receiver can reconstruct the secret
-        let secret_from_receiver = (channel.read_block()?).into();
-        if secret != secret_from_receiver {
-            return Err(OleError::SenderError("Receiver replied with incorrect reconstructed secret"))
-        }
-
-        let v_blocks = channel.read_blocks(F::B)?;
-
         let mut alpha2 = F::alpha();
         alpha2.square();
 
@@ -93,6 +86,14 @@ impl Sender for OleSender {
         let mut b_vals = b_poly.to_vec();
         b_vals.resize_with(F::B, F::zero);
         F::fft3(&mut b_vals, &F::beta());
+
+        // Check that the receiver can reconstruct the secret
+        let secret_from_receiver = (channel.read_block()?).into();
+        if secret != secret_from_receiver {
+            return Err(OleError::SenderError("Receiver replied with incorrect reconstructed secret"))
+        }
+
+        let v_blocks = channel.read_blocks(F::B)?;
 
         for (i, v) in v_blocks.iter().enumerate() {
             a_vals[i].mul_assign(&(*v).into());
@@ -152,6 +153,8 @@ pub struct OleReceiver {
     ot: KosReceiver,
 }
 
+use std::sync::{Arc, Mutex};
+
 impl Receiver for OleReceiver {
     fn init<C: AbstractChannel, Crng: CryptoRng + Rng>(
         channel: &mut C,
@@ -168,10 +171,28 @@ impl Receiver for OleReceiver {
         rng: &mut Crng,
     ) -> Result<Vec<F>, OleError> {
         // TODO: Check that input is on the correct form
+
+        // Spawn new thread to compute the encoding
+        let indices = encoding::pick_indices(F::A, F::B, rng);
+        let indices_clone = indices.clone();
+        let xref = Arc::new(Mutex::new(x.to_vec()));
+        let xref_clone = Arc::clone(&xref);
+        let compute_encoding = thread::spawn(move || {
+            let mut rng = rand::thread_rng();
+            let mut x_locked = xref_clone.lock().unwrap();
+            let poly = encoding::encode_reed_solomon_with_indices(&mut x_locked, &indices_clone, &mut rng);
+            poly
+        });
+
+        // Spawn new thread to compute the error correcting polynomial used when decoding
+        // the RS encoding
+        let indices_clone = indices.clone();
+        let compute_error_poly = thread::spawn(move || {
+            encoding::error_poly(&indices_clone)
+        });
+
         let mut com = [0u8; 32];
         channel.read_bytes(&mut com)?;
-
-        let (encoded, x_poly, indices) = encoding::encode_reed_solomon(&x, rng);
 
         let mut share_indices = vec![];
         let mut j = 0;
@@ -221,7 +242,16 @@ impl Receiver for OleReceiver {
         channel.write_block(&secret.to_block())?;
         channel.flush()?;
 
-        for v in encoded.iter() {
+        // Wait for computation of the encoding to finish
+        let x_poly = match compute_encoding.join() {
+            Ok(poly) => poly,
+            Err(_e) => return Err(OleError::ReceiverError("error joining encoding thread")),
+        };
+        let x_encoded = match xref.lock() {
+            Ok(x_encoded) => x_encoded,
+            Err(_e) => return Err(OleError::ReceiverError("error taking lock of encoding of x")),
+        };
+        for v in x_encoded.iter() {
             channel.write_block(&v.to_block())?;
         }
         channel.flush()?;
@@ -232,15 +262,20 @@ impl Receiver for OleReceiver {
             ws[*i].sub_assign(&ti);
         }
 
-        let mut y_poly = encoding::decode_reed_solomon(&mut ws, &indices);
+        let zr = F::random(rng);
+        channel.write_block(&zr.to_block())?;
+        channel.flush()?;
+
+        // Wait for computation of the error correcting polynomial
+        let error_poly = match compute_error_poly.join() {
+            Ok(poly) => poly,
+            Err(_e) => return Err(OleError::ReceiverError("error joining encoding thread")),
+        };
+        let mut y_poly = encoding::decode_reed_solomon_with_error_poly(&mut ws, &error_poly);
         // if y_poly.len() != F::A {
         //
         // }
         // assert!(y_poly.len() == F::A);
-
-        let zr = F::random(rng);
-        channel.write_block(&zr.to_block())?;
-        channel.flush()?;
 
         let a_zr: F = (channel.read_block()?).into();
         let b_zr: F = (channel.read_block()?).into();

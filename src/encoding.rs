@@ -2,35 +2,47 @@ use crate::field::OleField;
 use crate::poly::{euclid_division, poly_from_roots};
 use rand::{seq::IteratorRandom, CryptoRng, Rng};
 
-pub fn decode_reed_solomon<F: OleField>(points: &mut [F], pos: &[usize]) -> Vec<F> {
-    F::fft3_inverse(points, &F::beta());
-    let roots: Vec<F> = pos.iter().map(|idx| F::beta().pow([*idx as u64])).collect();
-    let b = poly_from_roots(&roots);
-    let (_, r) = euclid_division(points, &b);
-    return r;
+pub fn decode_reed_solomon<F: OleField>(points: &mut [F], indices: &[usize]) -> Vec<F> {
+    let poly = error_poly(indices);
+    decode_reed_solomon_with_error_poly(points, &poly)
 }
 
+pub fn error_poly<F: OleField>(indices: &[usize]) -> Vec<F> {
+    let roots: Vec<F> = indices.iter().map(|idx| F::beta().pow([*idx as u64])).collect();
+    poly_from_roots(&roots)
+}
+
+pub fn decode_reed_solomon_with_error_poly<F: OleField>(points: &mut [F], poly: &[F]) -> Vec<F> {
+    F::fft3_inverse(points, &F::beta());
+    let (_, r) = euclid_division(points, poly);
+    return r
+}
+
+#[allow(dead_code)]
 pub fn encode_reed_solomon<F: OleField, Crng: CryptoRng + Rng>(
-    x: &[F],
+    x: &mut Vec<F>,
     rng: &mut Crng,
-) -> (Vec<F>, Vec<F>, Vec<usize>) {
+) -> (Vec<F>, Vec<usize>) {
     let pos = pick_indices(F::A, F::B, rng);
+    let poly = encode_reed_solomon_with_indices(x, &pos, rng);
+    (poly, pos)
+}
 
-    // let mut x_padded = pad_every_other(x, rng);
-    // for (i, x_) in x.iter().enumerate() {
-    //     assert_eq!(*x_, x_padded[2*i]);
-    // }
-    let mut x_padded = x.to_vec();
-    x_padded.resize_with(F::A / 2, || F::random(rng));
-    F::fft2_inverse(&mut x_padded, &F::alpha().pow([2]));
-    let x_poly = x_padded.to_vec();
-    x_padded.resize_with(F::B, F::zero);
-    F::fft3(&mut x_padded, &F::beta());
+pub fn encode_reed_solomon_with_indices<F: OleField, Crng: CryptoRng + Rng>(
+    x: &mut Vec<F>,
+    indices: &[usize],
+    rng: &mut Crng,
+) -> Vec<F> {
+    x.resize_with(F::A / 2, || F::random(rng));
+    F::fft2_inverse(x, &F::alpha().pow([2]));
+    let x_poly = x.to_vec();
+    x.resize_with(F::B, F::zero);
+    F::fft3(x, &F::beta());
 
-    let pos_len = pos.len();
+    let pos_len = indices.len();
     let mut j = 0;
-    for (i, x) in x_padded.iter_mut().enumerate() {
-        if j < pos_len && i == pos[j] {
+    for (i, x) in x.iter_mut().enumerate() {
+        if j < pos_len && i == indices[j] {
             j += 1;
             continue;
         } else {
@@ -38,7 +50,7 @@ pub fn encode_reed_solomon<F: OleField, Crng: CryptoRng + Rng>(
         }
     }
 
-    return (x_padded, x_poly, pos);
+    x_poly
 }
 
 pub fn pad_every_other<F: OleField, Crng: CryptoRng + Rng>(input: &[F], rng: &mut Crng) -> Vec<F> {
@@ -81,21 +93,22 @@ mod tests {
     #[test]
     fn test_encode_decode() {
         let mut rng = rand::thread_rng();
-        let points: Vec<Fp> = (0..(Fp::A / 2) - 1).map(|_| Fp::random(&mut rng)).collect();
+        let mut points: Vec<Fp> = (0..(Fp::A / 2) - 1).map(|_| Fp::random(&mut rng)).collect();
+        let points_clone = points.clone();
 
-        let (mut encoded, poly, pos) = encode_reed_solomon(&points, &mut rng);
-        for (i, p) in points.iter().enumerate() {
+        let (poly, pos) = encode_reed_solomon(&mut points, &mut rng);
+        for (i, p) in points_clone.iter().enumerate() {
             assert_eq!(*p, poly::horner(&poly, &Fp::alpha().pow([(2 * i) as u64])));
         }
-        assert!(encoded.len() == Fp::B);
+        assert!(points.len() == Fp::B);
         assert!(poly.len() == Fp::A / 2);
         assert!(pos.len() == Fp::A);
 
-        let mut decoded_poly = decode_reed_solomon(&mut encoded, &pos);
+        let mut decoded_poly = decode_reed_solomon(&mut points, &pos);
         println!("len decoded: {}", decoded_poly.len());
         Fp::fft2(&mut decoded_poly, &Fp::alpha().pow([2]));
 
-        for (idx, p) in points.iter().enumerate() {
+        for (idx, p) in points_clone.iter().enumerate() {
             assert_eq!(*p, decoded_poly[idx]);
         }
     }
@@ -103,9 +116,10 @@ mod tests {
     #[test]
     fn test_encode_decode_linear_operations() {
         let mut rng = rand::thread_rng();
-        let points: Vec<Fp> = (0..Fp::A / 2).map(|_| Fp::random(&mut rng)).collect();
+        let mut points: Vec<Fp> = (0..Fp::A / 2).map(|_| Fp::random(&mut rng)).collect();
+        let points_clone = points.clone();
 
-        let (mut encoded, _poly, pos) = encode_reed_solomon(&points, &mut rng);
+        let (_poly, pos) = encode_reed_solomon(&mut points, &mut rng);
 
         let mut a: Vec<Fp> = (0..Fp::A / 2).map(|_| Fp::random(&mut rng)).collect();
         let a_copy = a.to_vec();
@@ -133,7 +147,7 @@ mod tests {
 
         // Modify the encoding as in the protocol
         let mut j = 0;
-        for (idx, x) in encoded.iter_mut().enumerate() {
+        for (idx, x) in points.iter_mut().enumerate() {
             x.mul_assign(&a[idx]);
             x.add_assign(&b[idx]);
             if j < pos.len() && idx != pos[j] {
@@ -143,12 +157,12 @@ mod tests {
             }
         }
 
-        let mut decoded_poly = decode_reed_solomon(&mut encoded, &pos);
+        let mut decoded_poly = decode_reed_solomon(&mut points, &pos);
         // let decoded_copy = decoded_poly.to_vec();
         println!("len decoded: {}", decoded_poly.len());
         Fp::fft2(&mut decoded_poly, &Fp::alpha());
 
-        for (idx, p) in points.iter().enumerate() {
+        for (idx, p) in points_clone.iter().enumerate() {
             let mut expected = *p;
             expected.mul_assign(&a_copy[idx]);
             expected.add_assign(&b_copy[idx]);
